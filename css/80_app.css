@@ -1085,7 +1085,7 @@ a.hide-toggle {
     visibility: visible;
 }
 .preset-icon-container.showing-img *:not(.image-icon) {
-    visibility: hidden;
+    display: none;
 }
 
 .preset-icon-point-border path {
@@ -1706,8 +1706,11 @@ a.hide-toggle {
 .form-field-input-text > input:only-of-type,
 .form-field-input-tel > input:only-of-type,
 .form-field-input-email > input:only-of-type,
-.form-field-input-url > input:only-of-type {
+.form-field-input-url > input:only-child {
     border-radius: 0 0 4px 4px;
+}
+.form-field-input-url > input:not(:only-child) {
+    border-radius: 0 0 0 4px;
 }
 .form-field-input-number > input:only-of-type {
     border-radius: 0 0 0 4px;
@@ -2950,6 +2953,11 @@ img.tag-reference-wiki-image {
     flex-direction: column;
     padding: 5px 0;
     pointer-events: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+.map-controls::-webkit-scrollbar {
+    display: none;
 }
 .map-controls:before {
     content: '';
@@ -3226,11 +3234,11 @@ div.full-screen > button:focus {
 
 .issue-text .issue-icon {
     flex: 0 0 auto;
-    padding: 5px 7px;
+    padding: 2px 3px;
 }
 .issue-text .issue-message {
     flex: 1 1 auto;
-    padding: 5px 0;
+    padding: 4px 5px;
 }
 .issue-label .issue-autofix {
     flex: 0 0 auto;
@@ -3545,6 +3553,9 @@ li.issue-fix-item button:not(.actionable) .fix-icon {
 }
 
 .issue-container:not(.active) ul.issue-fix-list {
+    display: none;
+}
+.issue-container:not(.active) .issue-info {
     display: none;
 }
 
