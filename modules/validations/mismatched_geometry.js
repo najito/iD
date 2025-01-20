@@ -1,4 +1,5 @@
 import deepEqual from 'fast-deep-equal';
+
 import { actionAddVertex } from '../actions/add_vertex';
 import { actionChangeTags } from '../actions/change_tags';
 import { actionMergeNodes } from '../actions/merge_nodes';
@@ -9,7 +10,8 @@ import { osmNodeGeometriesForTags, osmTagSuggestingArea } from '../osm/tags';
 import { presetManager } from '../presets';
 import { geoHasSelfIntersections, geoSphericalDistance } from '../geo';
 import { t } from '../core/localizer';
-import { utilDisplayLabel, utilTagText } from '../util';
+import { utilTagText } from '../util';
+import { utilDisplayLabel } from '../util/utilDisplayLabel';
 import { validationIssue, validationIssueFix } from '../core/validation';
 
 
@@ -20,14 +22,21 @@ export function validationMismatchedGeometry() {
         if (entity.type !== 'way' || entity.isClosed()) return null;
 
         var tagSuggestingArea = entity.tagSuggestingArea();
+
         if (!tagSuggestingArea) {
             return null;
         }
 
         var asLine = presetManager.matchTags(tagSuggestingArea, 'line');
         var asArea = presetManager.matchTags(tagSuggestingArea, 'area');
-        if (asLine && asArea && (asLine === asArea)) {
-            // these tags also allow lines and making this an area wouldn't matter
+        if (asLine && asArea && deepEqual(asLine.tags, asArea.tags)) {
+            // this tag also allows lines and making this an area wouldn't matter
+            return null;
+        }
+
+        if (asLine.isFallback() && asArea.isFallback() && !deepEqual(tagSuggestingArea, { area: 'yes' })) {
+            // if the entity matches the fallback preset, regardless of the
+            // geometry, then changing the geometry will not help.
             return null;
         }
 
@@ -82,14 +91,29 @@ export function validationMismatchedGeometry() {
         var tagSuggestingArea = tagSuggestingLineIsArea(entity);
         if (!tagSuggestingArea) return null;
 
+        var validAsLine = false;
+        var presetAsLine = presetManager.matchTags(entity.tags, 'line');
+        if (presetAsLine) {
+            validAsLine = true;
+            var key = Object.keys(tagSuggestingArea)[0];
+            if (presetAsLine.tags[key] && presetAsLine.tags[key] === '*') {
+                // only matches a fallback preset of the tag which is suggesting to be an area
+                validAsLine = false;
+            }
+            if (Object.keys(presetAsLine.tags).length === 0) {
+                // only matches the fallback "line" preset
+                validAsLine = false;
+            }
+        }
+
         return new validationIssue({
             type: type,
             subtype: 'area_as_line',
             severity: 'warning',
             message: function(context) {
                 var entity = context.hasEntity(this.entityIds[0]);
-                return entity ? t.html('issues.tag_suggests_area.message', {
-                    feature: utilDisplayLabel(entity, 'area'),
+                return entity ? t.append('issues.tag_suggests_area.message', {
+                    feature: utilDisplayLabel(entity, 'area', true /* verbose */),
                     tag: utilTagText({ tags: tagSuggestingArea })
                 }) : '';
             },
@@ -103,14 +127,17 @@ export function validationMismatchedGeometry() {
                 var entity = context.entity(this.entityIds[0]);
                 var connectEndsOnClick = makeConnectEndpointsFixOnClick(entity, context.graph());
 
-                fixes.push(new validationIssueFix({
-                    title: t.html('issues.fix.connect_endpoints.title'),
-                    onClick: connectEndsOnClick
-                }));
+                if (!validAsLine) {
+                    // only suggest to "connect the ends" if the feature is not also valid as a line
+                    fixes.push(new validationIssueFix({
+                        title: t.append('issues.fix.connect_endpoints.title'),
+                        onClick: connectEndsOnClick
+                    }));
+                }
 
                 fixes.push(new validationIssueFix({
                     icon: 'iD-operation-delete',
-                    title: t.html('issues.fix.remove_tag.title'),
+                    title: t.append('issues.fix.remove_tag.title'),
                     onClick: function(context) {
                         var entityId = this.issue.entityIds[0];
                         var entity = context.entity(entityId);
@@ -136,7 +163,7 @@ export function validationMismatchedGeometry() {
                 .enter()
                 .append('div')
                 .attr('class', 'issue-reference')
-                .html(t.html('issues.tag_suggests_area.reference'));
+                .call(t.append('issues.tag_suggests_area.reference'));
         }
     }
 
@@ -161,8 +188,8 @@ export function validationMismatchedGeometry() {
                 severity: 'warning',
                 message: function(context) {
                     var entity = context.hasEntity(this.entityIds[0]);
-                    return entity ? t.html('issues.vertex_as_point.message', {
-                        feature: utilDisplayLabel(entity, 'vertex')
+                    return entity ? t.append('issues.vertex_as_point.message', {
+                        feature: utilDisplayLabel(entity, 'vertex', true /* verbose */)
                     }) : '';
                 },
                 reference: function showReference(selection) {
@@ -171,7 +198,7 @@ export function validationMismatchedGeometry() {
                         .enter()
                         .append('div')
                         .attr('class', 'issue-reference')
-                        .html(t.html('issues.vertex_as_point.reference'));
+                        .call(t.append('issues.vertex_as_point.reference'));
                 },
                 entityIds: [entity.id]
             });
@@ -184,8 +211,8 @@ export function validationMismatchedGeometry() {
                 severity: 'warning',
                 message: function(context) {
                     var entity = context.hasEntity(this.entityIds[0]);
-                    return entity ? t.html('issues.point_as_vertex.message', {
-                        feature: utilDisplayLabel(entity, 'point')
+                    return entity ? t.append('issues.point_as_vertex.message', {
+                        feature: utilDisplayLabel(entity, 'point', true /* verbose */)
                     }) : '';
                 },
                 reference: function showReference(selection) {
@@ -194,7 +221,7 @@ export function validationMismatchedGeometry() {
                         .enter()
                         .append('div')
                         .attr('class', 'issue-reference')
-                        .html(t.html('issues.point_as_vertex.reference'));
+                        .call(t.append('issues.point_as_vertex.reference'));
                 },
                 entityIds: [entity.id],
                 dynamicFixes: extractPointDynamicFixes
@@ -220,9 +247,14 @@ export function validationMismatchedGeometry() {
 
         if (sourceGeom === 'area') targetGeoms.unshift('line');
 
+        var asSource = presetManager.match(entity, graph);
+
         var targetGeom = targetGeoms.find(nodeGeom => {
-            var asSource = presetManager.matchTags(entity.tags, sourceGeom);
-            var asTarget = presetManager.matchTags(entity.tags, nodeGeom);
+            const asTarget = presetManager.matchTags(
+                entity.tags,
+                nodeGeom,
+                entity.extent(graph).center(),
+            );
             if (!asSource || !asTarget ||
                 asSource === asTarget ||
                 // sometimes there are two presets with the same tags for different geometries
@@ -263,8 +295,8 @@ export function validationMismatchedGeometry() {
             severity: 'warning',
             message: function(context) {
                 var entity = context.hasEntity(this.entityIds[0]);
-                return entity ? t.html('issues.' + referenceId + '.message', {
-                    feature: utilDisplayLabel(entity, targetGeom)
+                return entity ? t.append('issues.' + referenceId + '.message', {
+                    feature: utilDisplayLabel(entity, targetGeom, true /* verbose */)
                 }) : '';
             },
             reference: function showReference(selection) {
@@ -273,7 +305,7 @@ export function validationMismatchedGeometry() {
                     .enter()
                     .append('div')
                     .attr('class', 'issue-reference')
-                    .html(t.html('issues.mismatched_geometry.reference'));
+                    .call(t.append('issues.mismatched_geometry.reference'));
             },
             entityIds: [entity.id],
             dynamicFixes: dynamicFixes
@@ -307,7 +339,7 @@ export function validationMismatchedGeometry() {
         return [
             new validationIssueFix({
                 icon: 'iD-icon-line',
-                title: t.html('issues.fix.convert_to_line.title'),
+                title: t.append('issues.fix.convert_to_line.title'),
                 onClick: convertOnClick
             })
         ];
@@ -335,7 +367,7 @@ export function validationMismatchedGeometry() {
         return [
             new validationIssueFix({
                 icon: 'iD-operation-extract',
-                title: t.html('issues.fix.extract_point.title'),
+                title: t.append('issues.fix.extract_point.title'),
                 onClick: extractOnClick
             })
         ];
@@ -370,8 +402,8 @@ export function validationMismatchedGeometry() {
                 severity: 'warning',
                 message: function(context) {
                     var entity = context.hasEntity(this.entityIds[0]);
-                    return entity ? t.html('issues.unclosed_multipolygon_part.message', {
-                        feature: utilDisplayLabel(entity, context.graph())
+                    return entity ? t.append('issues.unclosed_multipolygon_part.message', {
+                        feature: utilDisplayLabel(entity, context.graph(), true /* verbose */)
                     }) : '';
                 },
                 reference: showReference,
@@ -392,7 +424,7 @@ export function validationMismatchedGeometry() {
                 .enter()
                 .append('div')
                 .attr('class', 'issue-reference')
-                .html(t.html('issues.unclosed_multipolygon_part.reference'));
+                .call(t.append('issues.unclosed_multipolygon_part.reference'));
         }
     }
 

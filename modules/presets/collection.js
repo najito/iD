@@ -1,4 +1,5 @@
-import { utilArrayIntersection, utilArrayUniq } from '../util/array';
+import { locationManager } from '../core/LocationManager';
+import { utilArrayUniq } from '../util/array';
 import { utilEditDistance } from '../util';
 
 
@@ -46,7 +47,7 @@ export function presetCollection(collection) {
     return _this.item(id);
   };
 
-  _this.search = (value, geometry, countryCodes) => {
+  _this.search = (value, geometry, loc) => {
     if (!value) return _this;
 
     // don't remove diacritical characters since we're assuming the user is being intentional
@@ -64,10 +65,22 @@ export function presetCollection(collection) {
       return index === 0;
     }
 
-    function sortPresets(nameProp) {
+    function sortPresets(nameProp, aliasesProp) {
       return function sortNames(a, b) {
         let aCompare = a[nameProp]();
         let bCompare = b[nameProp]();
+        if (aliasesProp) {
+          // also search in aliases
+          const findMatchingAlias = strings => {
+            if (strings.some(s => s === value)) {
+              return strings.find(s => s === value);
+            } else {
+              return strings.filter(s => s.includes(value)).sort((a,b) => a.length - b.length)[0];
+            }
+          };
+          aCompare = findMatchingAlias([aCompare].concat(a[aliasesProp]()));
+          bCompare = findMatchingAlias([bCompare].concat(b[aliasesProp]()));
+        }
 
         // priority if search string matches preset name exactly - #4325
         if (value === aCompare) return -1;
@@ -87,25 +100,18 @@ export function presetCollection(collection) {
     }
 
     let pool = _this.collection;
-    if (countryCodes) {
-      if (typeof countryCodes === 'string') countryCodes = [countryCodes];
-      countryCodes = countryCodes.map(code => code.toLowerCase());
-
-      pool = pool.filter(a => {
-        if (a.locationSet) {
-          if (a.locationSet.include && !utilArrayIntersection(a.locationSet.include, countryCodes).length) return false;
-          if (a.locationSet.exclude && utilArrayIntersection(a.locationSet.exclude, countryCodes).length) return false;
-        }
-        return true;
-      });
+    if (Array.isArray(loc)) {
+      const validHere = locationManager.locationSetsAt(loc);
+      pool = pool.filter(a => !a.locationSetID || validHere[a.locationSetID]);
     }
+
     const searchable = pool.filter(a => a.searchable !== false && a.suggestion !== true);
     const suggestions = pool.filter(a => a.suggestion === true);
 
     // matches value to preset.name
     const leadingNames = searchable
-      .filter(a => leading(a.searchName()))
-      .sort(sortPresets('searchName'));
+      .filter(a => leading(a.searchName()) || a.searchAliases().some(leading))
+      .sort(sortPresets('searchName', 'searchAliases'));
 
     // matches value to preset suggestion name
     const leadingSuggestions = suggestions
@@ -113,8 +119,8 @@ export function presetCollection(collection) {
       .sort(sortPresets('searchName'));
 
     const leadingNamesStripped = searchable
-      .filter(a => leading(a.searchNameStripped()))
-      .sort(sortPresets('searchNameStripped'));
+      .filter(a => leading(a.searchNameStripped()) || a.searchAliasesStripped().some(leading))
+      .sort(sortPresets('searchNameStripped', 'searchAliasesStripped'));
 
     const leadingSuggestionsStripped = suggestions
       .filter(a => leadingStrict(a.searchNameStripped()))
@@ -122,6 +128,9 @@ export function presetCollection(collection) {
 
     // matches value to preset.terms values
     const leadingTerms = searchable
+      .filter(a => (a.terms() || []).some(leading));
+
+    const leadingSuggestionTerms = suggestions
       .filter(a => (a.terms() || []).some(leading));
 
     // matches value to preset.tags values
@@ -150,15 +159,26 @@ export function presetCollection(collection) {
         });
       });
 
+    // matches key=value to preset.tags
+    let leadingTagKeyValues = [];
+    if (value.includes('=')) {
+      leadingTagKeyValues = searchable.filter(a => a.tags &&
+          Object.keys(a.tags).some(key => key + '=' + a.tags[key] === value))
+        .concat(searchable.filter(a => a.tags &&
+          Object.keys(a.tags).some(key => leading(key + '=' + a.tags[key]))));
+    }
+
     let results = leadingNames.concat(
       leadingSuggestions,
       leadingNamesStripped,
       leadingSuggestionsStripped,
       leadingTerms,
+      leadingSuggestionTerms,
       leadingTagValues,
       similarName,
       similarSuggestions,
-      similarTerms
+      similarTerms,
+      leadingTagKeyValues
     ).slice(0, MAXRESULTS - 1);
 
     if (geometry) {

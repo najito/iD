@@ -30,14 +30,14 @@ should fallback gracefully without breaking other aspects of the app.
 This table covers high-level compatibility, with individual features to be detailed
 elsewhere in this document.
 
-|   | Icon | Browser | Notes | Issues |
-|---|---|---|---|---|
+|   | Icon | Browser | Notes |
+|---|---|---|---|
 | ✅ | ![chrome logo] | [Chrome](https://en.wikipedia.org/wiki/Google_Chrome) | |
-| ✅* | ![firefox logo] | [Firefox](https://en.wikipedia.org/wiki/Firefox) | \*Minor known issues | [#7132](https://github.com/openstreetmap/iD/issues/7132) |
+| ✅ | ![firefox logo] | [Firefox](https://en.wikipedia.org/wiki/Firefox) | |
 | ✅ | ![safari logo] | [Safari](https://en.wikipedia.org/wiki/Safari_(web_browser)) | |
 | 🟩 | ![opera logo] | [Opera](https://en.wikipedia.org/wiki/Opera_(web_browser)) | |
 | 🟩 | ![edge logo] | [Edge](https://en.wikipedia.org/wiki/Microsoft_Edge) | |
-| 🟠 | ![ie logo] | [Internet Explorer](https://en.wikipedia.org/wiki/Internet_Explorer) | IE has been discontinued, but [IE 11 is still maintained](https://docs.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge). iD [polyfills](https://en.wikipedia.org/wiki/Polyfill_(programming)) modern web features for IE 11 where possible, but full support should not be expected |
+| ❌ | ![ie logo] | [Internet Explorer](https://en.wikipedia.org/wiki/Internet_Explorer) | IE has been discontinued, but [IE 11 is still maintained](https://docs.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge). iD uses features of modern web standard which are not supported by Internet Explorer. |
 | ✅ | ![webkit logo] | [iOS](https://en.wikipedia.org/wiki/IOS) browsers | All browsers on iOS (e.g. Safari, Chrome, Firefox, Edge) use the [WebKit](https://en.wikipedia.org/wiki/WebKit) engine and should thus have equivalent support |
 | 🟩 | ![android logo] | [Android](https://en.wikipedia.org/wiki/Android_(operating_system)) browsers | Browsers on Android can use their own engines, so support may vary, but there are currently no known issues |
 | 🟩 | 🌐 | Others | iD should run on any browser implementing [modern web standards](https://www.w3.org/standards/). Hardware factors such as screen size may affect usability |
@@ -74,7 +74,7 @@ It's impractical to ensure every single input device works as expected, so the t
 | 🟩 | ![apple adb mouse] | Single-button [mouse](https://en.wikipedia.org/wiki/Computer_mouse) | Primary click (e.g. left-click) can be used for all pointer interactions. Long-clicking on map features opens the edit menu |
 | 🟩 | ![ibm mouse] | Multi-button mouse | Secondary click (e.g. right-click) can be used on map features to open the edit menu. Middle click, etc., are not needed by iD but are passed through to the browser |
 | 🟩 | [![magic mouse]](https://en.wikipedia.org/wiki/Magic_Mouse) | Multi-touch mouse | 2D scrolling in the map is treated as panning, not zooming |
-| 🟠 | ![vertical scroll wheel] | Vertical [scroll wheel](https://en.wikipedia.org/wiki/Scroll_wheel) | Should zoom the map in and out | [#5550](https://github.com/openstreetmap/iD/issues/5550) | 
+| 🟠 | ![vertical scroll wheel] | Vertical [scroll wheel](https://en.wikipedia.org/wiki/Scroll_wheel) | Should zoom the map in and out | [#5550](https://github.com/openstreetmap/iD/issues/5550) |
 | ❌ |  | Horizontal scroll wheel | Currently does nothing in the map | [#7134](https://github.com/openstreetmap/iD/issues/7134) |
 | 🤷 | [![apple mighty mouse]](https://en.wikipedia.org/wiki/Apple_Mighty_Mouse) | Scroll ball | Works like combined vertical/horizontal scroll wheels |
 | 🟩 | 🖲 | [Trackball](https://en.wikipedia.org/wiki/Trackball) | |
@@ -165,12 +165,12 @@ for more info.
 | ✅ | Browser language preference | iD tries to use the language set in the browser |
 | ✅ | Base language fallback | E.g. if `pt_BR` is incomplete, `pt` should be tried before `en` | [#7996](https://github.com/openstreetmap/iD/issues/7996)
 | ✅ | Custom fallback languages | If the preferred language is incomplete, user-specified ones should be tried before `en` (e.g. `kk` → `ru`) | [#7996](https://github.com/openstreetmap/iD/issues/7996)
-| 🟠 | [`lang` HTML attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang) | Helps with text-to-speech, text formatting, and auto-transliteration, particularly when iD mixes strings from different languages | [#7963](https://github.com/openstreetmap/iD/issues/7963)
+| ✅ | [`lang` HTML attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang) | Helps with text-to-speech, text formatting, and auto-transliteration, particularly when iD mixes strings from different languages | [#7998](https://github.com/openstreetmap/iD/pull/7998)
 | ✅ | Locale URL parameters | `locale` and `rtl` can be used to manually set iD's locale preferences. See the [API](API.md#url-parameters) |
 | ❌ | Language selection in UI | The mapper should be able to view and change iD's language in the interface at any time. Useful for public computers with fixed browser languages | [#3120](https://github.com/openstreetmap/iD/issues/3120) |
 | 🟩 | Right-to-left layouts | The [`dir` HTML attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/dir) is properly set for languages like Hebrew and Arabic |
 | ✅ | [Language-specific plurals](https://docs.transifex.com/localization-tips-workflows/plurals-and-genders#how-pluralized-strings-are-handled-by-transifex) | English has two plural forms, but some languages need more to be grammatically correct | [#597](https://github.com/openstreetmap/iD/issues/597), [#7991](https://github.com/openstreetmap/iD/issues/7991) |
-| 🟠 | [Localized number formats](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat) | Most in-text numbers are localized. Numeric fields are not | [#3615](https://github.com/openstreetmap/iD/issues/3615), [#7993](https://github.com/openstreetmap/iD/issues/7993) |
+| ✅ | [Localized number formats](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat) | Most in-text numbers are localized, including numeric fields | [#8769](https://github.com/openstreetmap/iD/pull/8769), [#7993](https://github.com/openstreetmap/iD/issues/7993) |
 | 🟠 | Label icons | Icons should accompany text labels to illustrate the meaning of untranslated terms |
 
 ### Translatability
@@ -193,7 +193,6 @@ translated to one or more languages.
 | ✅ | OSM community index | | |
 | ✅ | iD validation issues | | |
 | ✅ | KeepRight issues | | |
-| ✅ | ImproveOSM issues | | |
 | ✅ | Osmose issues | Translated strings are [provided by Osmose](https://www.transifex.com/openstreetmap-france/osmose/) itself, not iD | |
 
 ### Language Coverage

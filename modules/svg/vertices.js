@@ -5,6 +5,7 @@ import { presetManager } from '../presets';
 import { geoScaleToZoom } from '../geo';
 import { osmEntity } from '../osm';
 import { svgPassiveVertex, svgPointTransform } from './helpers';
+import { svgTagClasses } from './tag_classes';
 
 export function svgVertices(projection, context) {
     var radiuses = {
@@ -140,6 +141,7 @@ export function svgVertices(projection, context) {
             .classed('retagged', function(d) {
                 return base.entities[d.id] && !deepEqual(graph.entities[d.id].tags, base.entities[d.id].tags);
             })
+            .call(svgTagClasses())
             .call(updateAttributes);
 
         // Vertices with icons get a `use`.
@@ -155,13 +157,12 @@ export function svgVertices(projection, context) {
         iconUse.enter()
             .append('use')
             .attr('class', 'icon')
-            .attr('width', '11px')
-            .attr('height', '11px')
-            .attr('transform', 'translate(-5.5, -5.5)')
+            .attr('width', '12px')
+            .attr('height', '12px')
+            .attr('transform', 'translate(-6, -6)')
             .attr('xlink:href', function(d) {
                 var picon = getIcon(d);
-                var isMaki = /^maki-/.test(picon);
-                return '#' + picon + (isMaki ? '-11' : '');
+                return picon ? '#' + picon : '';
             });
 
 

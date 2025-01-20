@@ -9,24 +9,31 @@ export function uiFeatureInfo(context) {
         var hiddenList = features.hidden().map(function(k) {
             if (stats[k]) {
                 count += stats[k];
-                return t('inspector.title_count', { title: t.html('feature.' + k + '.description'), count: stats[k] });
+                return t.append('inspector.title_count', {
+                    title: t('feature.' + k + '.description'),
+                    count: stats[k]
+                });
             }
             return null;
         }).filter(Boolean);
 
-        selection.html('');
+        selection.text('');
 
         if (hiddenList.length) {
             var tooltipBehavior = uiTooltip()
                 .placement('top')
                 .title(function() {
-                    return hiddenList.join('<br/>');
+                    return selection => {
+                        hiddenList.forEach(hiddenFeature => {
+                            selection.append('div').call(hiddenFeature);
+                        });
+                    };
                 });
 
             selection.append('a')
                 .attr('class', 'chip')
                 .attr('href', '#')
-                .html(t.html('feature_info.hidden_warning', { count: count }))
+                .call(t.append('feature_info.hidden_warning', { count: count }))
                 .call(tooltipBehavior)
                 .on('click', function(d3_event) {
                     tooltipBehavior.hide();

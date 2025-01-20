@@ -1,15 +1,15 @@
-import * as countryCoder from '@ideditor/country-coder';
 import { dispatch as d3_dispatch } from 'd3-dispatch';
 import { select as d3_select } from 'd3-selection';
 
 import { t, localizer } from '../core/localizer';
+import { locationManager } from '../core/LocationManager';
 import { svgIcon } from '../svg/icon';
 import { uiTooltip } from './tooltip';
 import { geoExtent } from '../geo/extent';
 import { uiFieldHelp } from './field_help';
 import { uiFields } from './fields';
+import { LANGUAGE_SUFFIX_REGEX } from './fields/localized';
 import { uiTagReference } from './tag_reference';
-import { utilArrayIntersection } from '../util/array';
 import { utilRebind, utilUniqueDomId } from '../util';
 
 
@@ -29,13 +29,18 @@ export function uiField(context, presetField, entityIDs, options) {
     var _state = '';
     var _tags = {};
 
+    var _entityExtent;
+    if (entityIDs && entityIDs.length) {
+        _entityExtent = entityIDs.reduce(function(extent, entityID) {
+            var entity = context.graph().entity(entityID);
+            return extent.extend(entity.extent(context.graph()));
+        }, geoExtent());
+    }
+
     var _locked = false;
     var _lockedTip = uiTooltip()
-        .title(t.html('inspector.lock.suggestion', { label: field.label }))
+        .title(() => t.append('inspector.lock.suggestion', { label: field.title }))
         .placement('bottom');
-
-
-    field.keys = field.keys || [field.key];
 
     // only create the fields that are actually being shown
     if (_show && !field.impl) {
@@ -60,12 +65,23 @@ export function uiField(context, presetField, entityIDs, options) {
     }
 
 
+    function allKeys() {
+        let keys = field.keys || [field.key];
+        if (field.type === 'directionalCombo' && field.key) {
+            // directionalCombo fields can have an additional key describing the for
+            // cases where both directions share a "common" value.
+            keys = keys.concat(field.key);
+        }
+        return keys;
+    }
+
+
     function isModified() {
         if (!entityIDs || !entityIDs.length) return false;
         return entityIDs.some(function(entityID) {
             var original = context.graph().base().entities[entityID];
             var latest = context.graph().entity(entityID);
-            return field.keys.some(function(key) {
+            return allKeys().some(function(key) {
                 return original ? latest.tags[key] !== original.tags[key] : latest.tags[key];
             });
         });
@@ -73,7 +89,7 @@ export function uiField(context, presetField, entityIDs, options) {
 
 
     function tagsContainFieldKey() {
-        return field.keys.some(function(key) {
+        return allKeys().some(function(key) {
             if (field.type === 'multiCombo') {
                 for (var tagKey in _tags) {
                     if (tagKey.indexOf(key) === 0) {
@@ -81,6 +97,15 @@ export function uiField(context, presetField, entityIDs, options) {
                     }
                 }
                 return false;
+            }
+            if (field.type === 'localized') {
+                for (let tagKey in _tags) {
+                    // matches for field:<code>, where <code> is a BCP 47 locale code
+                    let match = tagKey.match(LANGUAGE_SUFFIX_REGEX);
+                    if (match && match[1] === field.key && match[2]) {
+                        return true;
+                    }
+                }
             }
             return _tags[key] !== undefined;
         });
@@ -92,7 +117,7 @@ export function uiField(context, presetField, entityIDs, options) {
         d3_event.preventDefault();
         if (!entityIDs || _locked) return;
 
-        dispatch.call('revert', d, d.keys);
+        dispatch.call('revert', d, allKeys());
     }
 
 
@@ -102,7 +127,7 @@ export function uiField(context, presetField, entityIDs, options) {
         if (_locked) return;
 
         var t = {};
-        d.keys.forEach(function(key) {
+        allKeys().forEach(function(key) {
             t[key] = undefined;
         });
 
@@ -133,7 +158,7 @@ export function uiField(context, presetField, entityIDs, options) {
             textEnter
                 .append('span')
                 .attr('class', 'label-textvalue')
-                .html(function(d) { return d.label(); });
+                .each(function(d) { d.label()(d3_select(this)); });
 
             textEnter
                 .append('span')
@@ -189,7 +214,11 @@ export function uiField(context, presetField, entityIDs, options) {
                         referenceKey = referenceKey.replace(/:$/, '');
                     }
 
-                    reference = uiTagReference(d.reference || { key: referenceKey }, context);
+                    var referenceOptions = d.reference || {
+                        key: referenceKey,
+                        value: _tags[referenceKey]
+                    };
+                    reference = uiTagReference(referenceOptions, context);
                     if (_state === 'hover') {
                         reference.showing(false);
                     }
@@ -302,21 +331,9 @@ export function uiField(context, presetField, entityIDs, options) {
             return field.matchGeometry(context.graph().geometry(entityID));
         })) return false;
 
-        if (field.locationSet) {
-            var extent = combinedEntityExtent();
-            if (!extent) return true;
-
-            var center = extent.center();
-            var codes = countryCoder.iso1A2Codes(center).map(function(code) {
-                return code.toLowerCase();
-            });
-
-            if (field.locationSet.include && !utilArrayIntersection(codes, field.locationSet.include).length) {
-                return false;
-            }
-            if (field.locationSet.exclude && utilArrayIntersection(codes, field.locationSet.exclude).length) {
-                return false;
-            }
+        if (entityIDs && _entityExtent && field.locationSetID) {   // is field allowed in this location?
+            var validHere = locationManager.locationSetsAt(_entityExtent.center());
+            if (!validHere[field.locationSetID]) return false;
         }
 
         var prerequisiteTag = field.prerequisiteTag;
@@ -353,14 +370,6 @@ export function uiField(context, presetField, entityIDs, options) {
             field.impl.focus();
         }
     };
-
-
-    function combinedEntityExtent() {
-        return entityIDs && entityIDs.length && entityIDs.reduce(function(extent, entityID) {
-            var entity = context.graph().entity(entityID);
-            return extent.extend(entity.extent(context.graph()));
-        }, geoExtent());
-    }
 
 
     return utilRebind(field, dispatch, 'on');

@@ -87,7 +87,20 @@ export function uiIntroPoint(context, reveal) {
         context.on('enter.intro', function(mode) {
             if (mode.id !== 'select') return chapter.restart();
             _pointID = context.mode().selectedIDs()[0];
-            continueTo(searchPreset);
+
+            if (context.graph().geometry(_pointID) === 'vertex'){
+
+                //disallow all
+                context.map().on('move.intro drawn.intro', null);
+                context.on('enter.intro', null);
+
+                reveal(pointBox, helpHtml('intro.points.place_point_error'), {
+                    buttonText: t.html('intro.ok'),
+                    buttonCallback: function() { return chapter.restart(); }
+                });
+            } else {
+                continueTo(searchPreset);
+            }
         });
 
         function continueTo(nextStep) {
@@ -202,7 +215,7 @@ export function uiIntroPoint(context, reveal) {
         // reset pane, in case user happened to change it..
         context.container().select('.inspector-wrap .panewrap').style('right', '0%');
 
-        var addNameString = helpHtml('intro.points.fields_info') + '{br}' + helpHtml('intro.points.add_name');
+        var addNameString = helpHtml('intro.points.fields_info') + '{br}' + helpHtml('intro.points.add_name') + '{br}' + helpHtml('intro.points.add_reminder');
 
         timeout(function() {
             // It's possible for the user to add a name in a previous step..
@@ -253,7 +266,7 @@ export function uiIntroPoint(context, reveal) {
         });
 
         reveal('.entity-editor-pane',
-            helpHtml('intro.points.add_close', { button: icon(href, 'inline') })
+            helpHtml('intro.points.add_close', { button: { html: icon(href, 'inline') } })
         );
 
         function continueTo(nextStep) {
@@ -350,7 +363,7 @@ export function uiIntroPoint(context, reveal) {
 
         timeout(function() {
             reveal('.entity-editor-pane',
-                helpHtml('intro.points.update_close', { button: icon('#iD-icon-close', 'inline') })
+                helpHtml('intro.points.update_close', { button: { html: icon('#iD-icon-close', 'inline') } })
             );
         }, 500);
 
@@ -416,6 +429,9 @@ export function uiIntroPoint(context, reveal) {
 
         timeout(function() {
             context.map().on('move.intro', function() {
+                if (selectMenuItem(context, 'delete').empty()) {
+                    return continueTo(rightClickPoint);
+                }
                 reveal('.edit-menu',
                     helpHtml('intro.points.delete'),
                     { duration: 0,  padding: 50 }

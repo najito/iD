@@ -3,7 +3,7 @@ import {
 } from 'd3-selection';
 
 import { svgIcon } from '../svg/icon';
-import { localizer } from '../core/localizer';
+import { t, localizer } from '../core/localizer';
 import { uiTooltip } from './tooltip';
 
 
@@ -72,7 +72,7 @@ export function uiPane(id, context) {
         if (!_paneTooltip) {
             _paneTooltip = uiTooltip()
                 .placement((localizer.textDirection() === 'rtl') ? 'right' : 'left')
-                .title(_description)
+                .title(() => _description)
                 .keys([_key]);
         }
 
@@ -106,10 +106,12 @@ export function uiPane(id, context) {
 
         heading
             .append('h2')
-            .html(_label);
+            .text('')
+            .call(_label);
 
         heading
             .append('button')
+            .attr('title', t('icons.close'))
             .on('click', hidePane)
             .call(svgIcon('#iD-icon-close'));
 

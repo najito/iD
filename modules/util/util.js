@@ -1,7 +1,6 @@
 import { remove as removeDiacritics } from 'diacritics';
 import { fixRTLTextForSvg, rtlRegex } from './svg_paths_rtl_fix';
 
-import { presetManager } from '../presets';
 import { t, localizer } from '../core/localizer';
 import { utilArrayUnion } from './array';
 import { utilDetect } from './detect';
@@ -178,20 +177,35 @@ export function utilGetAllNodes(ids, graph) {
     }
 }
 
-
-export function utilDisplayName(entity) {
+/**
+ * @param {boolean} hideNetwork If true, the `network` tag will not be used in the name to prevent
+ *                              it being shown twice (see PR #8707#discussion_r712658175)
+ */
+export function utilDisplayName(entity, hideNetwork) {
     var localizedNameKey = 'name:' + localizer.languageCode().toLowerCase();
     var name = entity.tags[localizedNameKey] || entity.tags.name || '';
-    if (name) return name;
 
     var tags = {
         direction: entity.tags.direction,
         from: entity.tags.from,
-        network: entity.tags.cycle_network || entity.tags.network,
+        name,
+        network: hideNetwork ? undefined : (entity.tags.cycle_network || entity.tags.network),
         ref: entity.tags.ref,
         to: entity.tags.to,
         via: entity.tags.via
     };
+
+    // A right or left-right arrow likely indicates a formulaic “name” as specified by the Public Transport v2 schema.
+    // This name format already contains enough details to disambiguate the feature; avoid duplicating these details.
+    if (entity.tags.route && entity.tags.name && entity.tags.name.match(/[→⇒↔⇔]|[-=]>/)) {
+        return entity.tags.name;
+    }
+
+    // Non-routes tend to be labeled in many places besides the relation lists, such as the map, where brevity is important.
+    if (!entity.tags.route && name) {
+        return name;
+    }
+
     var keyComponents = [];
 
     if (tags.network) {
@@ -199,6 +213,9 @@ export function utilDisplayName(entity) {
     }
     if (tags.ref) {
         keyComponents.push('ref');
+    }
+    if (tags.name) {
+        keyComponents.push('name');
     }
 
     // Routes may need more disambiguation based on direction or destination
@@ -225,8 +242,9 @@ export function utilDisplayName(entity) {
 export function utilDisplayNameForPath(entity) {
     var name = utilDisplayName(entity);
     var isFirefox = utilDetect().browser.toLowerCase().indexOf('firefox') > -1;
+    var isNewChromium = Number(utilDetect().version.split('.')[0]) >= 96.0;
 
-    if (!isFirefox && name && rtlRegex.test(name)) {
+    if (!isFirefox && !isNewChromium && name && rtlRegex.test(name)) {
         name = fixRTLTextForSvg(name);
     }
 
@@ -240,24 +258,6 @@ export function utilDisplayType(id) {
         w: t('inspector.way'),
         r: t('inspector.relation')
     }[id.charAt(0)];
-}
-
-
-export function utilDisplayLabel(entity, graphOrGeometry) {
-    var displayName = utilDisplayName(entity);
-    if (displayName) {
-        // use the display name if there is one
-        return displayName;
-    }
-    var preset = typeof graphOrGeometry === 'string' ?
-        presetManager.matchTags(entity.tags, graphOrGeometry) :
-        presetManager.match(entity, graphOrGeometry);
-    if (preset && preset.name()) {
-        // use the preset name if there is a match
-        return preset.name();
-    }
-    // fallback to the display type (node/way/relation)
-    return utilDisplayType(entity.id);
 }
 
 
@@ -394,7 +394,7 @@ export function utilPrefixDOMProperty(property) {
 
     if (property in s) return property;
 
-    property = property.substr(0, 1).toUpperCase() + property.substr(1);
+    property = property.slice(0, 1).toUpperCase() + property.slice(1);
 
     while (++i < n) {
         if (prefixes[i] + property in s) {
@@ -527,6 +527,10 @@ export function utilNoAuto(selection) {
         .attr('autocomplete', 'new-password')
         .attr('autocorrect', 'off')
         .attr('autocapitalize', 'off')
+        .attr('data-1p-ignore', 'true')  // 1Password
+        .attr('data-bwignore', 'true')   // Bitwarden
+        .attr('data-form-type', 'other') // Dashlane
+        .attr('data-lpignore', 'true')   // LastPass
         .attr('spellcheck', isText ? 'true' : 'false');
 }
 
@@ -573,13 +577,69 @@ export function utilUnicodeCharsTruncated(str, limit) {
     return Array.from(str).slice(0, limit).join('');
 }
 
-// Variation of d3.json (https://github.com/d3/d3-fetch/blob/master/src/json.js)
-export function utilFetchJson(resourse, init) {
-    return fetch(resourse, init)
-        .then((response) => {
-            // fetch in PhantomJS tests may return ok=false and status=0 even if it's okay
-            if ((!response.ok && response.status !== 0) || !response.json) throw new Error(response.status + ' ' + response.statusText);
-            if (response.status === 204 || response.status === 205) return;
-            return response.json();
-        });
+function toNumericID(id) {
+    var match = id.match(/^[cnwr](-?\d+)$/);
+    if (match) {
+        return parseInt(match[1], 10);
+    }
+    return NaN;
 }
+
+function compareNumericIDs(left, right) {
+    if (isNaN(left) && isNaN(right)) return -1;
+    if (isNaN(left)) return 1;
+    if (isNaN(right)) return -1;
+    if (Math.sign(left) !== Math.sign(right)) return -Math.sign(left);
+    if (Math.sign(left) < 0) return Math.sign(right - left);
+    return Math.sign(left - right);
+}
+
+// Returns -1 if the first parameter ID is older than the second,
+// 1 if the second parameter is older, 0 if they are the same.
+// If both IDs are test IDs, the function returns -1.
+export function utilCompareIDs(left, right) {
+    return compareNumericIDs(toNumericID(left), toNumericID(right));
+}
+
+// Returns the chronologically oldest ID in the list.
+// Database IDs (with positive numbers) before editor ones (with negative numbers).
+// Among each category, the closest number to 0 is the oldest.
+// Test IDs (any string that does not conform to OSM's ID scheme) are taken last.
+export function utilOldestID(ids) {
+    if (ids.length === 0) {
+        return undefined;
+    }
+
+    var oldestIDIndex = 0;
+    var oldestID = toNumericID(ids[0]);
+
+    for (var i = 1; i < ids.length; i++) {
+        var num = toNumericID(ids[i]);
+
+        if (compareNumericIDs(oldestID, num) === 1) {
+            oldestIDIndex = i;
+            oldestID = num;
+        }
+    }
+
+    return ids[oldestIDIndex];
+}
+
+// returns a normalized and truncated string to `maxChars` utf-8 characters
+export function utilCleanOsmString(val, maxChars) {
+    // be lenient with input
+    if (val === undefined || val === null) {
+      val = '';
+    } else {
+      val = val.toString();
+    }
+
+    // remove whitespace
+    val = val.trim();
+
+    // use the canonical form of the string
+    if (val.normalize) val = val.normalize('NFC');
+
+    // trim to the number of allowed characters
+    return utilUnicodeCharsTruncated(val, maxChars);
+  }

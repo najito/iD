@@ -19,7 +19,7 @@ export function uiSectionValidationIssues(id, severity, context) {
         .label(function() {
             if (!_issues) return '';
             var issueCountText = _issues.length > 1000 ? '1000+' : String(_issues.length);
-            return t('inspector.title_count', { title: t.html('issues.' + severity + 's.list_title'), count: issueCountText });
+            return t.append('inspector.title_count', { title: t('issues.' + severity + 's.list_title'), count: issueCountText });
         })
         .disclosureContent(renderDisclosureContent)
         .shouldDisplay(function() {
@@ -73,7 +73,7 @@ export function uiSectionValidationIssues(id, severity, context) {
 
 
         var items = list.selectAll('li')
-            .data(issues, function(d) { return d.id; });
+            .data(issues, function(d) { return d.key; });
 
         // Exit
         items.exit()
@@ -146,8 +146,9 @@ export function uiSectionValidationIssues(id, severity, context) {
             .order();
 
         items.selectAll('.issue-message')
-            .html(function(d) {
-                return d.message(context);
+            .text('')
+            .each(function(d) {
+                return d.message(context)(d3_select(this));
             });
 
         /*
@@ -174,7 +175,7 @@ export function uiSectionValidationIssues(id, severity, context) {
         linkEnter
             .append('span')
             .attr('class', 'autofix-all-link-text')
-            .html(t.html('issues.fix_all.title'));
+            .call(t.append('issues.fix_all.title'));
 
         linkEnter
             .append('span')

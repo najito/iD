@@ -42,26 +42,31 @@ export function uiEntityEditor(context) {
             .append('div')
             .attr('class', 'header fillL');
 
+        var direction = (localizer.textDirection() === 'rtl') ? 'forward' : 'backward';
+
         headerEnter
             .append('button')
             .attr('class', 'preset-reset preset-choose')
-            .call(svgIcon((localizer.textDirection() === 'rtl') ? '#iD-icon-forward' : '#iD-icon-backward'));
+            .attr('title', t('inspector.back_tooltip'))
+            .call(svgIcon(`#iD-icon-${direction}`));
 
         headerEnter
             .append('button')
             .attr('class', 'close')
+            .attr('title', t('icons.close'))
             .on('click', function() { context.enter(modeBrowse(context)); })
             .call(svgIcon(_modified ? '#iD-icon-apply' : '#iD-icon-close'));
 
         headerEnter
-            .append('h3');
+            .append('h2');
 
         // Update
         header = header
             .merge(headerEnter);
 
-        header.selectAll('h3')
-            .html(_entityIDs.length === 1 ? t.html('inspector.edit') : t.html('inspector.edit_features'));
+        header.selectAll('h2')
+            .text('')
+            .call(_entityIDs.length === 1 ? t.append('inspector.edit') : t.append('inspector.edit_features'));
 
         header.selectAll('.preset-reset')
             .on('click', function() {
@@ -158,11 +163,19 @@ export function uiEntityEditor(context) {
 
             var tags = Object.assign({}, entity.tags);   // shallow copy
 
-            for (var k in changed) {
-                if (!k) continue;
-                var v = changed[k];
-                if (v !== undefined || tags.hasOwnProperty(k)) {
-                    tags[k] = v;
+            if (typeof changed === 'function') {
+                // a complex callback tag change
+                tags = changed(tags);
+            } else {
+                for (var k in changed) {
+                    if (!k) continue;
+                    var v = changed[k];
+                    if (typeof v === 'object') {
+                        // a "key only" tag change
+                        tags[k] = tags[v.oldKey];
+                    } else if (v !== undefined || tags.hasOwnProperty(k)) {
+                        tags[k] = v;
+                    }
                 }
             }
 

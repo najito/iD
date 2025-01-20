@@ -68,8 +68,9 @@ export function operationSplit(context, selectedIDs) {
 
     operation.tooltip = function() {
         var disable = operation.disabled();
-        if (disable) return t('operations.split.' + disable);
-        return t('operations.split.description.' + _geometry + '.' + _waysAmount + '.' + _nodesAmount + '_node');
+        return disable ?
+            t.append('operations.split.' + disable) :
+            t.append('operations.split.description.' + _geometry + '.' + _waysAmount + '.' + _nodesAmount + '_node');
     };
 
 
@@ -78,9 +79,18 @@ export function operationSplit(context, selectedIDs) {
     };
 
 
+    operation.icon = function() {
+        if (_waysAmount === 'multiple') {
+            return '#iD-operation-split-multiple';
+        } else {
+            return '#iD-operation-split';
+        }
+    };
+
+
     operation.id = 'split';
     operation.keys = [t('operations.split.key')];
-    operation.title = t('operations.split.title');
+    operation.title = t.append('operations.split.title');
     operation.behavior = behaviorOperation(context).which(operation);
 
     return operation;

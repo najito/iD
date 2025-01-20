@@ -2,7 +2,9 @@ import { dispatch as d3_dispatch } from 'd3-dispatch';
 
 import { prefs } from '../core/preferences';
 import { fileFetcher } from '../core/file_fetcher';
-import { osmNodeGeometriesForTags, osmSetAreaKeys, osmSetPointTags, osmSetVertexTags } from '../osm/tags';
+import { locationManager } from '../core/LocationManager';
+
+import { osmNodeGeometriesForTags, osmSetAreaKeys, osmSetLineTags, osmSetPointTags, osmSetVertexTags } from '../osm/tags';
 import { presetCategory } from './category';
 import { presetCollection } from './collection';
 import { presetField } from './field';
@@ -51,11 +53,12 @@ export function presetIndex() {
 
   // Index of presets by (geometry, tag key).
   let _geometryIndex = { point: {}, vertex: {}, line: {}, area: {}, relation: {} };
-
   let _loadPromise;
 
-  _this.ensureLoaded = () => {
-    if (_loadPromise) return _loadPromise;
+
+  /** @param {boolean=} bypassCache - used by unit tests */
+  _this.ensureLoaded = (bypassCache) => {
+    if (_loadPromise && !bypassCache) return _loadPromise;
 
     return _loadPromise = Promise.all([
         fileFetcher.get('preset_categories'),
@@ -71,19 +74,34 @@ export function presetIndex() {
           fields: vals[3]
         });
         osmSetAreaKeys(_this.areaKeys());
+        osmSetLineTags(_this.lineTags());
         osmSetPointTags(_this.pointTags());
         osmSetVertexTags(_this.vertexTags());
       });
   };
 
 
+  // `merge` accepts an object containing new preset data (all properties optional):
+  // {
+  //   fields: {},
+  //   presets: {},
+  //   categories: {},
+  //   defaults: {},
+  //   featureCollection: {}
+  //}
   _this.merge = (d) => {
+    let newLocationSets = [];
+
     // Merge Fields
     if (d.fields) {
       Object.keys(d.fields).forEach(fieldID => {
-        const f = d.fields[fieldID];
+        let f = d.fields[fieldID];
+
         if (f) {   // add or replace
-          _fields[fieldID] = presetField(fieldID, f);
+          f = presetField(fieldID, f, _fields);
+          if (f.locationSet) newLocationSets.push(f);
+          _fields[fieldID] = f;
+
         } else {   // remove
           delete _fields[fieldID];
         }
@@ -93,10 +111,14 @@ export function presetIndex() {
     // Merge Presets
     if (d.presets) {
       Object.keys(d.presets).forEach(presetID => {
-        const p = d.presets[presetID];
+        let p = d.presets[presetID];
+
         if (p) {   // add or replace
           const isAddable = !_addablePresetIDs || _addablePresetIDs.has(presetID);
-          _presets[presetID] = presetPreset(presetID, p, isAddable, _fields, _presets);
+          p = presetPreset(presetID, p, isAddable, _fields, _presets);
+          if (p.locationSet) newLocationSets.push(p);
+          _presets[presetID] = p;
+
         } else {   // remove (but not if it's a fallback)
           const existing = _presets[presetID];
           if (existing && !existing.isFallback()) {
@@ -106,22 +128,23 @@ export function presetIndex() {
       });
     }
 
-    // Need to rebuild _this.collection before loading categories
-    _this.collection = Object.values(_presets).concat(Object.values(_categories));
-
     // Merge Categories
     if (d.categories) {
       Object.keys(d.categories).forEach(categoryID => {
-        const c = d.categories[categoryID];
+        let c = d.categories[categoryID];
+
         if (c) {   // add or replace
-          _categories[categoryID] = presetCategory(categoryID, c, _this);
+          c = presetCategory(categoryID, c, _presets);
+          if (c.locationSet) newLocationSets.push(c);
+          _categories[categoryID] = c;
+
         } else {   // remove
           delete _categories[categoryID];
         }
       });
     }
 
-    // Rebuild _this.collection after loading categories
+    // Rebuild _this.collection after changing presets and categories
     _this.collection = Object.values(_presets).concat(Object.values(_categories));
 
     // Merge Defaults
@@ -141,19 +164,28 @@ export function presetIndex() {
     // Rebuild universal fields array
     _universal = Object.values(_fields).filter(field => field.universal);
 
-    // Reset all the preset fields - they'll need to be resolved again
-    Object.values(_presets).forEach(preset => preset.resetFields());
-
     // Rebuild geometry index
     _geometryIndex = { point: {}, vertex: {}, line: {}, area: {}, relation: {} };
     _this.collection.forEach(preset => {
       (preset.geometry || []).forEach(geometry => {
         let g = _geometryIndex[geometry];
         for (let key in preset.tags) {
-          (g[key] = g[key] || []).push(preset);
+          g[key] = g[key] || {};
+          let value = preset.tags[key];
+          (g[key][value] = g[key][value] || []).push(preset);
         }
       });
     });
+
+    // Merge Custom Features
+    if (d.featureCollection && Array.isArray(d.featureCollection.features)) {
+      locationManager.mergeCustomGeoJSON(d.featureCollection);
+    }
+
+    // Resolve all locationSet features.
+    if (newLocationSets.length) {
+      locationManager.mergeLocationSets(newLocationSets);
+    }
 
     return _this;
   };
@@ -166,41 +198,74 @@ export function presetIndex() {
       if (geometry === 'vertex' && entity.isOnAddressLine(resolver)) {
         geometry = 'point';
       }
-      return _this.matchTags(entity.tags, geometry);
+      const entityExtent = entity.extent(resolver);
+      return _this.matchTags(entity.tags, geometry, entityExtent.center());
     });
   };
 
 
-  _this.matchTags = (tags, geometry) => {
-    const geometryMatches = _geometryIndex[geometry];
-    let address;
-    let best = -1;
-    let match;
+  _this.matchTags = (tags, geometry, loc) => {
+    const keyIndex = _geometryIndex[geometry];
+    let bestScore = -1;
+    let bestMatch;
+    let matchCandidates = [];
 
     for (let k in tags) {
-      // If any part of an address is present, allow fallback to "Address" preset - #4353
-      if (/^addr:/.test(k) && geometryMatches['addr:*']) {
-        address = geometryMatches['addr:*'][0];
-      }
+      let indexMatches = [];
 
-      const keyMatches = geometryMatches[k];
-      if (!keyMatches) continue;
+      let valueIndex = keyIndex[k];
+      if (!valueIndex) continue;
 
-      for (let i = 0; i < keyMatches.length; i++) {
-        const score = keyMatches[i].matchScore(tags);
-        if (score > best) {
-          best = score;
-          match = keyMatches[i];
+      let keyValueMatches = valueIndex[tags[k]];
+      if (keyValueMatches) indexMatches.push(...keyValueMatches);
+      let keyStarMatches = valueIndex['*'];
+      if (keyStarMatches) indexMatches.push(...keyStarMatches);
+
+      if (indexMatches.length === 0) continue;
+
+      for (let i = 0; i < indexMatches.length; i++) {
+        const candidate = indexMatches[i];
+        const score = candidate.matchScore(tags);
+
+        if (score === -1){
+          continue;
+        }
+        matchCandidates.push({score, candidate});
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = candidate;
         }
       }
     }
 
-    if (address && (!match || match.isFallback())) {
-      match = address;
+    if (bestMatch && bestMatch.locationSetID && bestMatch.locationSetID !== '+[Q2]' && Array.isArray(loc)){
+      const validHere = locationManager.locationSetsAt(loc);
+      if (!validHere[bestMatch.locationSetID]) {
+        matchCandidates.sort((a, b) => (a.score < b.score) ? 1 : -1);
+        for (let i = 0; i < matchCandidates.length; i++) {
+          const candidateScore = matchCandidates[i];
+          if (!candidateScore.candidate.locationSetID || validHere[candidateScore.candidate.locationSetID]) {
+            bestMatch = candidateScore.candidate;
+            bestScore = candidateScore.score;
+            break;
+          }
+        }
+      }
     }
-    return match || _this.fallback(geometry);
-  };
 
+    // If any part of an address is present, allow fallback to "Address" preset - #4353
+    if (!bestMatch || bestMatch.isFallback()) {
+      for (let k in tags){
+          if (/^addr:/.test(k) && keyIndex['addr:*'] && keyIndex['addr:*']['*']) {
+            bestMatch = keyIndex['addr:*']['*'][0];
+            break;
+          }
+      }
+    }
+
+    return bestMatch || _this.fallback(geometry);
+  };
 
   _this.allowsVertex = (entity, resolver) => {
     if (entity.type !== 'node') return false;
@@ -232,7 +297,14 @@ export function presetIndex() {
   // and the subkeys form the discardlist.
   _this.areaKeys = () => {
     // The ignore list is for keys that imply lines. (We always add `area=yes` for exceptions)
-    const ignore = ['barrier', 'highway', 'footway', 'railway', 'junction', 'type'];
+    const ignore = {
+      barrier: true,
+      highway: true,
+      footway: true,
+      railway: true,
+      junction: true,
+      type: true
+    };
     let areaKeys = {};
 
     // ignore name-suggestion-index and deprecated presets
@@ -243,7 +315,7 @@ export function presetIndex() {
       const keys = p.tags && Object.keys(p.tags);
       const key = keys && keys.length && keys[0];  // pick the first tag
       if (!key) return;
-      if (ignore.indexOf(key) !== -1) return;
+      if (ignore[key]) return;
 
       if (p.geometry.indexOf('area') !== -1) {    // probably an area..
         areaKeys[key] = areaKeys[key] || {};
@@ -265,6 +337,26 @@ export function presetIndex() {
     });
 
     return areaKeys;
+  };
+
+
+  _this.lineTags = () => {
+    return _this.collection.filter((lineTags, d) => {
+      // ignore name-suggestion-index, deprecated, and generic presets
+      if (d.suggestion || d.replacement || d.searchable === false) return lineTags;
+
+      // only care about the primary tag
+      const keys = d.tags && Object.keys(d.tags);
+      const key = keys && keys.length && keys[0];  // pick the first tag
+      if (!key) return lineTags;
+
+      // if this can be a line
+      if (d.geometry.indexOf('line') !== -1) {
+        lineTags[key] = lineTags[key] || [];
+        lineTags[key].push(d.tags);
+      }
+      return lineTags;
+    }, {});
   };
 
 
@@ -313,11 +405,12 @@ export function presetIndex() {
   _this.universal = () => _universal;
 
 
-  _this.defaults = (geometry, n, startWithRecents) => {
+  _this.defaults = (geometry, n, startWithRecents, loc, extraPresets) => {
     let recents = [];
     if (startWithRecents) {
       recents = _this.recent().matchGeometry(geometry).collection.slice(0, 4);
     }
+
     let defaults;
     if (_addablePresetIDs) {
       defaults = Array.from(_addablePresetIDs).map(function(id) {
@@ -329,9 +422,16 @@ export function presetIndex() {
       defaults = _defaults[geometry].collection.concat(_this.fallback(geometry));
     }
 
-    return presetCollection(
-      utilArrayUniq(recents.concat(defaults)).slice(0, n - 1)
+    let result = presetCollection(
+      utilArrayUniq(recents.concat(defaults).concat(extraPresets || [])).slice(0, n - 1)
     );
+
+    if (Array.isArray(loc)) {
+      const validHere = locationManager.locationSetsAt(loc);
+      result.collection = result.collection.filter(a => !a.locationSetID || validHere[a.locationSetID]);
+    }
+
+    return result;
   };
 
   // pass a Set of addable preset ids
@@ -359,7 +459,9 @@ export function presetIndex() {
 
   _this.recent = () => {
     return presetCollection(
-      utilArrayUniq(_this.getRecents().map(d => d.preset))
+      utilArrayUniq(_this.getRecents()
+        .map(d => d.preset)
+        .filter(d => d.searchable !== false))
     );
   };
 

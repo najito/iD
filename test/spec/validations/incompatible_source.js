@@ -2,7 +2,7 @@ describe('iD.validations.incompatible_source', function () {
     var context;
 
     beforeEach(function() {
-        context = iD.coreContext().init();
+        context = iD.coreContext().assetPath('../dist/').init();
     });
 
     function createWay(tags) {
@@ -63,4 +63,9 @@ describe('iD.validations.incompatible_source', function () {
         expect(issue.entityIds[0]).to.eql('w-1');
     });
 
+    it('does not flag buildings in the google-africa-buildings dataset', function() {
+        createWay({ building: 'yes', source: 'esri/Google_Africa_Buildings' });
+        var issues = validate();
+        expect(issues).to.have.lengthOf(0);
+    });
 });

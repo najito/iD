@@ -1,7 +1,10 @@
+import { escape } from 'lodash-es';
+
 import { fileFetcher } from './file_fetcher';
 import { utilDetect } from '../util/detect';
 import { utilStringQs } from '../util';
 import { utilArrayUniq } from '../util/array';
+import { presetsCdnUrl } from '../../config/id.js';
 
 let _mainLocalizer = coreLocalizer(); // singleton
 let _t = _mainLocalizer.t;
@@ -78,25 +81,24 @@ export function coreLocalizer() {
     var _loadPromise;
 
     localizer.ensureLoaded = () => {
-
         if (_loadPromise) return _loadPromise;
 
         let filesToFetch = [
-            // load the list of languages
-            'languages',
-            // load the list of supported locales
-            'locales'
+            'languages',  // load the list of languages
+            'locales'     // load the list of supported locales
         ];
 
         const localeDirs = {
             general: 'locales',
-            tagging: 'https://cdn.jsdelivr.net/npm/@openstreetmap/id-tagging-schema@3/dist/translations'
+            tagging: presetsCdnUrl + 'dist/translations'
         };
 
         let fileMap = fileFetcher.fileMap();
         for (let scopeId in localeDirs) {
-            let key = `locales_index_${scopeId}`;
-            fileMap[key] = localeDirs[scopeId] + '/index.min.json';
+            const key = `locales_index_${scopeId}`;
+            if (!fileMap[key]) {
+                fileMap[key] = localeDirs[scopeId] + '/index.min.json';
+            }
             filesToFetch.push(key);
         }
 
@@ -106,16 +108,12 @@ export function coreLocalizer() {
                 _dataLocales = results[1];
 
                 let indexes = results.slice(2);
-
                 let requestedLocales = (_preferredLocaleCodes || [])
-                    // List of locales preferred by the browser in priority order.
-                    .concat(utilDetect().browserLocales)
-                    // fallback to English since it's the only guaranteed complete language
-                    .concat(['en']);
+                    .concat(utilDetect().browserLocales)   // List of locales preferred by the browser in priority order.
+                    .concat(['en']);   // fallback to English since it's the only guaranteed complete language
 
                 _localeCodes = localesToUseFrom(requestedLocales);
-                // Run iD in the highest-priority locale; the rest are fallbacks
-                _localeCode = _localeCodes[0];
+                _localeCode = _localeCodes[0];   // Run iD in the highest-priority locale; the rest are fallbacks
 
                 let loadStringsPromises = [];
 
@@ -178,8 +176,17 @@ export function coreLocalizer() {
 
         let locale = _localeCode;
         if (locale.toLowerCase() === 'en-us') locale = 'en';
-        _languageNames = _localeStrings.general[locale].languageNames;
-        _scriptNames = _localeStrings.general[locale].scriptNames;
+
+        // some locales (like fr-FR) have no languageNames or scriptNames,
+        // so we need to load them from the base language (see #8673)
+        _languageNames = (
+          _localeStrings.general[locale].languageNames ||
+          _localeStrings.general[_languageCode].languageNames
+        );
+        _scriptNames = (
+          _localeStrings.general[locale].scriptNames ||
+          _localeStrings.general[_languageCode].scriptNames
+        );
 
         _usesMetric = _localeCode.slice(-3).toLowerCase() !== '-us';
     }
@@ -198,7 +205,9 @@ export function coreLocalizer() {
 
         let fileMap = fileFetcher.fileMap();
         const key = `locale_${scopeId}_${locale}`;
-        fileMap[key] = `${directory}/${locale}.min.json`;
+        if (!fileMap[key]) {
+            fileMap[key] = `${directory}/${locale}.min.json`;
+        }
 
         return fileFetcher.get(key)
             .then(d => {
@@ -232,7 +241,7 @@ export function coreLocalizer() {
     * the given `stringId`. If no string can be found in the requested locale,
     * we'll recurse down all the `_localeCodes` until one is found.
     *
-    * @param  {string}   stringId      string identifier
+    * @param  {string}   origStringId  string identifier
     * @param  {object?}  replacements  token replacements and default string
     * @param  {string?}  locale        locale to use (defaults to currentLocale)
     * @return {string?}  localized string
@@ -350,19 +359,67 @@ export function coreLocalizer() {
     };
 
     // Returns the localized text wrapped in an HTML element encoding the locale info
+    /**
+     * @deprecated This method is considered deprecated. Instead, use the direct DOM manipulating
+     *             method `t.append`.
+     */
     localizer.t.html = function(stringId, replacements, locale) {
-        const info = localizer.tInfo(stringId, replacements, locale);
-        // text may be empty or undefined if `replacements.default` is
-        return info.text ? localizer.htmlForLocalizedText(info.text, info.locale) : '';
+      // replacement string might be html unsafe, so we need to escape it except if it is explicitly marked as html code
+      replacements = Object.assign({}, replacements);
+      for (var k in replacements) {
+        if (typeof replacements[k] === 'string') {
+          replacements[k] = escape(replacements[k]);
+        }
+        if (typeof replacements[k] === 'object' && typeof replacements[k].html === 'string') {
+          replacements[k] = replacements[k].html;
+        }
+      }
+
+      const info = localizer.tInfo(stringId, replacements, locale);
+      // text may be empty or undefined if `replacements.default` is
+      if (info.text) {
+        return `<span class="localized-text" lang="${info.locale || 'und'}">${info.text}</span>`;
+      } else {
+        return '';
+      }
     };
 
-    localizer.htmlForLocalizedText = function(text, localeCode) {
-        return `<span class="localized-text" lang="${localeCode || 'unknown'}">${text}</span>`;
+    // Adds localized text wrapped as an HTML span element with locale info to the DOM
+    localizer.t.append = function(stringId, replacements, locale) {
+      const ret = function(selection) {
+        const info = localizer.tInfo(stringId, replacements, locale);
+        return selection.append('span')
+            .attr('class', 'localized-text')
+            .attr('lang', info.locale || 'und')
+            .text((replacements && replacements.prefix || '')
+                + info.text
+                + (replacements &&replacements.suffix || ''));
+      };
+      ret.stringId = stringId;
+      return ret;
+    };
+
+    // Adds or updates a localized text wrapped as an HTML span element with locale info to the DOM
+    localizer.t.addOrUpdate = function(stringId, replacements, locale) {
+      const ret = function(selection) {
+        const info = localizer.tInfo(stringId, replacements, locale);
+        const span = selection.selectAll('span.localized-text').data([info]);
+        const enter = span.enter()
+            .append('span')
+            .classed('localized-text', true);
+        span.merge(enter)
+            .attr('lang', info.locale || 'und')
+            .text((replacements && replacements.prefix || '')
+                + info.text
+                + (replacements &&replacements.suffix || ''));
+      };
+      ret.stringId = stringId;
+      return ret;
     };
 
     localizer.languageName = (code, options) => {
 
-        if (_languageNames[code]) {  // name in locale language
+        if (_languageNames && _languageNames[code]) {  // name in locale language
           // e.g. "German"
           return _languageNames[code];
         }
@@ -379,9 +436,9 @@ export function coreLocalizer() {
           } else if (langInfo.base && langInfo.script) {
             const base = langInfo.base;   // the code of the language this is based on
 
-            if (_languageNames[base]) {   // base language name in locale language
+            if (_languageNames && _languageNames[base]) {   // base language name in locale language
               const scriptCode = langInfo.script;
-              const script = _scriptNames[scriptCode] || scriptCode;
+              const script = (_scriptNames && _scriptNames[scriptCode]) || scriptCode;
               // e.g. "Serbian (Cyrillic)"
               return localizer.t('translate.language_and_code', { language: _languageNames[base], code: script });
 
@@ -392,6 +449,82 @@ export function coreLocalizer() {
           }
         }
         return code;  // if not found, use the code
+    };
+
+    /**
+     * Returns a function that formats a floating-point number in the given
+     * locale.
+     */
+    localizer.floatFormatter = (locale) => {
+        if (!('Intl' in window && 'NumberFormat' in Intl &&
+              'formatToParts' in Intl.NumberFormat.prototype)) {
+            return (number, fractionDigits) => {
+                return fractionDigits === undefined ? number.toString() : number.toFixed(fractionDigits);
+            };
+        } else {
+            return (number, fractionDigits) => number.toLocaleString(locale, {
+                minimumFractionDigits: fractionDigits,
+                maximumFractionDigits: fractionDigits === undefined ? 20 : fractionDigits,
+            });
+        }
+    };
+
+    /**
+     * Returns a function that parses a number formatted according to the given
+     * locale as a floating-point number.
+     */
+    localizer.floatParser = (locale) => {
+        // https://stackoverflow.com/a/55366435/4585461
+        const polyfill = (string) => +string.trim();
+        if (!('Intl' in window && 'NumberFormat' in Intl)) return polyfill;
+        const format = new Intl.NumberFormat(locale, { maximumFractionDigits: 20 });
+        if (!('formatToParts' in format)) return polyfill;
+        const parts = format.formatToParts(-12345.6);
+        const numerals = Array.from({ length: 10 }).map((_, i) => format.format(i));
+        const index = new Map(numerals.map((d, i) => [d, i]));
+        const literalPart = parts.find(d => d.type === 'literal');
+        const literal = literalPart && new RegExp(`[${literalPart.value}]`, 'g');
+        const groupPart = parts.find(d => d.type === 'group');
+        const group = groupPart && new RegExp(`[${groupPart.value}]`, 'g');
+        const decimalPart = parts.find(d => d.type === 'decimal');
+        const decimal = decimalPart && new RegExp(`[${decimalPart.value}]`);
+        const numeral = new RegExp(`[${numerals.join('')}]`, 'g');
+        const getIndex = d => index.get(d);
+        return (string) => {
+            string = string.trim();
+            if (literal) string = string.replace(literal, '');
+            if (group) string = string.replace(group, '');
+            if (decimal) string = string.replace(decimal, '.');
+            string = string.replace(numeral, getIndex);
+            return string ? +string : NaN;
+        };
+    };
+
+    /**
+     * Returns a function that returns the number of decimal places in a
+     * formatted number string.
+     */
+    localizer.decimalPlaceCounter = (locale) => {
+        var literal, group, decimal;
+        if ('Intl' in window && 'NumberFormat' in Intl) {
+            const format = new Intl.NumberFormat(locale, { maximumFractionDigits: 20 });
+            if ('formatToParts' in format) {
+                const parts = format.formatToParts(-12345.6);
+                const literalPart = parts.find(d => d.type === 'literal');
+                literal = literalPart && new RegExp(`[${literalPart.value}]`, 'g');
+                const groupPart = parts.find(d => d.type === 'group');
+                group = groupPart && new RegExp(`[${groupPart.value}]`, 'g');
+                const decimalPart = parts.find(d => d.type === 'decimal');
+                decimal = decimalPart && new RegExp(`[${decimalPart.value}]`);
+            }
+        }
+        return (string) => {
+            string = string.trim();
+            if (literal) string = string.replace(literal, '');
+            if (group) string = string.replace(group, '');
+            const parts = string.split(decimal || '.');
+            return parts && parts[1] && parts[1].length || 0;
+        };
     };
 
     return localizer;

@@ -78,7 +78,7 @@ describe('iD.util', function() {
         expect(iD.utilTagText({tags:{foo:'bar',two:'three'}})).to.eql('foo=bar, two=three');
     });
 
-    it('utilStringQs', function() {
+    describe('utilStringQs', function() {
         it('splits a parameter string into k=v pairs', function() {
             expect(iD.utilStringQs('foo=bar')).to.eql({foo: 'bar'});
             expect(iD.utilStringQs('foo=bar&one=2')).to.eql({foo: 'bar', one: '2' });
@@ -226,9 +226,54 @@ describe('iD.util', function() {
         });
     });
 
+    describe('utilCompareIDs', function() {
+        it('sorts existing IDs numerically in ascending order', function() {
+            expect(iD.utilCompareIDs('w100', 'w200')).to.eql(-1);
+            expect(iD.utilCompareIDs('w100', 'w50')).to.eql(1);
+            expect(iD.utilCompareIDs('w100', 'w100')).to.eql(0);
+        });
+        it('sorts new IDs numerically in descending order', function() {
+            expect(iD.utilCompareIDs('w-100', 'w-200')).to.eql(-1);
+            expect(iD.utilCompareIDs('w-100', 'w-50')).to.eql(1);
+            expect(iD.utilCompareIDs('w-100', 'w-100')).to.eql(0);
+        });
+        it('sorts existing IDs before new IDs', function() {
+            expect(iD.utilCompareIDs('w-1', 'w1')).to.eql(1);
+            expect(iD.utilCompareIDs('w1', 'w-1')).to.eql(-1);
+            expect(iD.utilCompareIDs('w-100', 'w1')).to.eql(1);
+            expect(iD.utilCompareIDs('w100', 'w-1')).to.eql(-1);
+            expect(iD.utilCompareIDs('w-1', 'w100')).to.eql(1);
+            expect(iD.utilCompareIDs('w1', 'w-100')).to.eql(-1);
+        });
+        it('sorts existing and new IDs before anything else', function() {
+            expect(iD.utilCompareIDs('w1', 'asdf')).to.eql(-1);
+            expect(iD.utilCompareIDs('asdf', 'w1')).to.eql(1);
+            expect(iD.utilCompareIDs('w-1', 'asdf')).to.eql(-1);
+            expect(iD.utilCompareIDs('asdf', 'w-1')).to.eql(1);
+        });
+        it('returns -1 for other strings', function() {
+            expect(iD.utilCompareIDs('aaa', 'b')).to.eql(-1);
+            expect(iD.utilCompareIDs('b', 'aaa')).to.eql(-1);
+            expect(iD.utilCompareIDs('a', 'a')).to.eql(-1);
+        });
+    });
+
     describe('utilDisplayName', function() {
         it('returns the name if tagged with a name', function() {
             expect(iD.utilDisplayName({tags: {name: 'East Coast Greenway'}})).to.eql('East Coast Greenway');
+        });
+        it('returns just the name for non-routes', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Abyssinian Room', ref: '260-115' }})).to.eql('Abyssinian Room');
+        });
+        it('returns just the name for route with PTv2-formatted names', function() {
+            expect(iD.utilDisplayName({tags: { name: 'NORTA 2: French Market → Canal at Bourbon', network: 'NORTA', ref: '2', from: 'French Market', to: 'Canal at Bourbon'}})).to.eql('NORTA 2: French Market → Canal at Bourbon');
+            expect(iD.utilDisplayName({tags: { name: 'VTA 64A: McKee & White => San Jose Diridon => Ohlone/Chynoweth', network: 'VTA', ref: '64A', from: 'McKee & White', to: 'Ohlone/Chynoweth', via: 'San Jose Diridon'}})).to.eql('VTA 64A: McKee & White => San Jose Diridon => Ohlone/Chynoweth');
+            expect(iD.utilDisplayName({tags: { name: 'Bus 224: Downtown Garland Station -> Lake Ray Hubbard TC -> Downtown Dallas', route: 'bus', ref: '224', from: 'Downtown Garland Station', to: 'Downtown Dallas', via: 'Lake Ray Hubbard TC'}})).to.eql('Bus 224: Downtown Garland Station -> Lake Ray Hubbard TC -> Downtown Dallas');
+        });
+        it('suppresses the network tag if the hideNetwork argument is true', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Lynfield Express', ref: '25L', network: 'AT', route: 'bus' }}, true)).to.eql('25L: Lynfield Express');
+            expect(iD.utilDisplayName({tags: { network: 'SORTA', ref: '3X' }}, true)).to.eql('3X');
+            expect(iD.utilDisplayName({tags: { name: 'Dallas North Tollway', network: 'US:TX:NTTA', route: 'road' }}, true)).to.eql('Dallas North Tollway');
         });
         it('distinguishes unnamed features by ref', function() {
             expect(iD.utilDisplayName({tags: {ref: '66'}})).to.eql('66');
@@ -250,6 +295,46 @@ describe('iD.util', function() {
             expect(iD.utilDisplayName({tags: {network: 'VTA', ref: 'Green', from: 'Old Ironsides', to: 'Winchester', route: 'bus'}})).to.eql('VTA Green from Old Ironsides to Winchester');
             // BART Yellow Line: Antioch => Pittsburg/Bay Point => SFO Airport => Millbrae
             expect(iD.utilDisplayName({tags: {network: 'BART', ref: 'Yellow', from: 'Antioch', to: 'Millbrae', via: 'Pittsburg/Bay Point;San Francisco International Airport', route: 'subway'}})).to.eql('BART Yellow from Antioch to Millbrae via Pittsburg/Bay Point;San Francisco International Airport');
+        });
+        it('distinguishes named features by name', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Ohio Turnpike', route: 'road' }})).to.eql('Ohio Turnpike');
+            expect(iD.utilDisplayName({tags: { name: 'Lynfield Express', ref: '25L', route: 'bus' }})).to.eql('25L: Lynfield Express');
+            expect(iD.utilDisplayName({tags: { name: 'Kāpiti Expressway', ref: 'SH1', route: 'road' }})).to.eql('SH1: Kāpiti Expressway');
+            expect(iD.utilDisplayName({tags: { name: 'Lynfield Express', ref: '25L', network: 'AT', route: 'bus' }})).to.eql('AT 25L: Lynfield Express');
+        });
+        it('distinguishes named features by network or cycle_network', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Dallas North Tollway', network: 'US:TX:NTTA', route: 'road' }})).to.eql('US:TX:NTTA Dallas North Tollway');
+        });
+        it('distinguishes named features by ref', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Dallas North Tollway', network: 'US:TX:NTTA', ref: 'DNT', route: 'road' }})).to.eql('US:TX:NTTA DNT: Dallas North Tollway');
+        });
+        it('distinguishes named features by direction', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Dallas North Tollway', network: 'US:TX:NTTA', direction: 'south', route: 'road' }})).to.eql('US:TX:NTTA Dallas North Tollway south');
+        });
+        it('distinguishes named features by waypoints', function() {
+            expect(iD.utilDisplayName({tags: { name: 'Kings Island Express', network: 'SORTA', ref: '71X', from: 'Sycamore & Court', to: 'Fields Ertel & Royal Point', route: 'bus' }})).to.eql('SORTA 71X: Kings Island Express from Sycamore & Court to Fields Ertel & Royal Point');
+            expect(iD.utilDisplayName({tags: { name: 'Local', network: 'Caltrain', from: 'San Francisco', to: 'Tamien', via: 'College Park', route: 'train' }})).to.eql('Caltrain Local from San Francisco to Tamien via College Park');
+        });
+    });
+
+    describe('utilOldestID', function() {
+        it('returns the oldest database ID', function() {
+            expect(iD.utilOldestID(['w3', 'w1', 'w2'])).to.eql('w1');
+        });
+        it('returns the oldest editor ID', function() {
+            expect(iD.utilOldestID(['w-3', 'w-2', 'w-1'])).to.eql('w-1');
+        });
+        it('returns the oldest IDs among database and editor IDs', function() {
+            expect(iD.utilOldestID(['w-1', 'w1', 'w-2'])).to.eql('w1');
+        });
+        it('returns the oldest database ID', function() {
+            expect(iD.utilOldestID(['w100', 'w-1', 'a', 'w-300', 'w2'])).to.eql('w2');
+        });
+        it('returns the oldest editor ID if no database IDs', function() {
+            expect(iD.utilOldestID(['w-100', 'w-1', 'a', 'w-300', 'w-2'])).to.eql('w-1');
+        });
+        it('returns the first ID in the list otherwise', function() {
+            expect(iD.utilOldestID(['z', 'a', 'A', 'Z'])).to.eql('z');
         });
     });
 });

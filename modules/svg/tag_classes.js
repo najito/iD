@@ -1,5 +1,5 @@
 import { select as d3_select } from 'd3-selection';
-import { osmPathHighwayTagValues, osmPavedTags, osmSemipavedTags } from '../osm/tags';
+import { osmPathHighwayTagValues, osmPavedTags, osmSemipavedTags, osmLifecyclePrefixes } from '../osm/tags';
 
 
 export function svgTagClasses() {
@@ -7,27 +7,14 @@ export function svgTagClasses() {
         'building', 'highway', 'railway', 'waterway', 'aeroway', 'aerialway',
         'piste:type', 'boundary', 'power', 'amenity', 'natural', 'landuse',
         'leisure', 'military', 'place', 'man_made', 'route', 'attraction',
-        'building:part', 'indoor'
+        'roller_coaster', 'building:part', 'indoor'
     ];
-    var statuses = [
-        // nonexistent, might be built
-        'proposed', 'planned',
-        // under maintentance or between groundbreaking and opening
-        'construction',
-        // existent but not functional
-        'disused',
-        // dilapidated to nonexistent
-        'abandoned',
-        // nonexistent, still may appear in imagery
-        'dismantled', 'razed', 'demolished', 'obliterated',
-        // existent occasionally, e.g. stormwater drainage basin
-        'intermittent'
-    ];
+    var statuses = Object.keys(osmLifecyclePrefixes);
     var secondaries = [
         'oneway', 'bridge', 'tunnel', 'embankment', 'cutting', 'barrier',
         'surface', 'tracktype', 'footway', 'crossing', 'service', 'sport',
         'public_transport', 'location', 'parking', 'golf', 'type', 'leisure',
-        'man_made', 'indoor'
+        'man_made', 'indoor', 'construction', 'proposed'
     ];
     var _tags = function(entity) { return entity.tags; };
 
@@ -160,11 +147,24 @@ export function svgTagClasses() {
         }
 
         // If this is a wikidata-tagged item, add a class for that..
-        if (t.wikidata || t['brand:wikidata']) {
+        var qid = (
+            t.wikidata ||
+            t['flag:wikidata'] ||
+            t['brand:wikidata'] ||
+            t['network:wikidata'] ||
+            t['operator:wikidata']
+        );
+
+        if (qid) {
             classes.push('tag-wikidata');
         }
 
-        return classes.join(' ').trim();
+        // ensure that classes for tags keys/values with special characters like spaces
+        // are not added to the DOM, because it can cause bizarre issues (#9448)
+        return classes
+            .filter(klass => /^[-_a-z0-9]+$/.test(klass))
+            .join(' ')
+            .trim();
     };
 
 

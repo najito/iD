@@ -1,23 +1,30 @@
 import { select as d3_select } from 'd3-selection';
 
+import { prefs } from '../../core/preferences';
 import { svgIcon } from '../../svg/icon';
 import { utilArrayIdentical } from '../../util/array';
 import { t } from '../../core/localizer';
 import { utilHighlightEntities } from '../../util';
 import { uiSection } from '../section';
 
+
 export function uiSectionEntityIssues(context) {
+    // Does the user prefer to expand the active issue?  Useful for viewing tag diff.
+    // Expand by default so first timers see it - #6408, #8143
+    var preference = prefs('entity-issues.reference.expanded');
+    var _expanded = preference === null ? true : (preference === 'true');
 
     var _entityIDs = [];
     var _issues = [];
     var _activeIssueID;
+
 
     var section = uiSection('entity-issues', context)
         .shouldDisplay(function() {
             return _issues.length > 0;
         })
         .label(function() {
-            return t('inspector.title_count', { title: t.html('issues.list_title'), count: _issues.length });
+            return t.append('inspector.title_count', { title: t('issues.list_title'), count: _issues.length });
         })
         .disclosureContent(renderDisclosureContent);
 
@@ -48,7 +55,7 @@ export function uiSectionEntityIssues(context) {
         _activeIssueID = _issues.length > 0 ? _issues[0].id : null;
 
         var containers = selection.selectAll('.issue-container')
-            .data(_issues, function(d) { return d.id; });
+            .data(_issues, function(d) { return d.key; });
 
         // Exit
         containers.exit()
@@ -122,6 +129,8 @@ export function uiSectionEntityIssues(context) {
                 var container = d3_select(this.parentNode.parentNode.parentNode);
                 var info = container.selectAll('.issue-info');
                 var isExpanded = info.classed('expanded');
+                _expanded = !isExpanded;
+                prefs('entity-issues.reference.expanded', _expanded);  // update preference
 
                 if (isExpanded) {
                     info
@@ -151,16 +160,16 @@ export function uiSectionEntityIssues(context) {
 
         containersEnter
             .append('div')
-            .attr('class', 'issue-info')
-            .style('max-height', '0')
-            .style('opacity', '0')
+            .attr('class', 'issue-info' + (_expanded ? ' expanded' : ''))
+            .style('max-height', (_expanded ? null : '0'))
+            .style('opacity', (_expanded ? '1' : '0'))
             .each(function(d) {
                 if (typeof d.reference === 'function') {
                     d3_select(this)
                         .call(d.reference);
                 } else {
                     d3_select(this)
-                        .html(t.html('inspector.no_documentation_key'));
+                        .call(t.append('inspector.no_documentation_key'));
                 }
             });
 
@@ -171,8 +180,9 @@ export function uiSectionEntityIssues(context) {
             .classed('active', function(d) { return d.id === _activeIssueID; });
 
         containers.selectAll('.issue-message')
-            .html(function(d) {
-                return d.message(context);
+            .text('')
+            .each(function(d) {
+                return d.message(context)(d3_select(this));
             });
 
         // fixes
@@ -233,7 +243,7 @@ export function uiSectionEntityIssues(context) {
         buttons
             .append('span')
             .attr('class', 'fix-message')
-            .html(function(d) { return d.title; });
+            .each(function(d) { return d.title(d3_select(this)); });
 
         fixesEnter.merge(fixes)
             .selectAll('button')

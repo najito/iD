@@ -5,12 +5,13 @@ import * as sexagesimal from '@mapbox/sexagesimal';
 
 import { presetManager } from '../presets';
 import { t } from '../core/localizer';
-import { dmsCoordinatePair } from '../util/units';
+import { dmsCoordinatePair, dmsMatcher } from '../util/units';
 import { coreGraph } from '../core/graph';
 import { geoSphericalDistance } from '../geo/geo';
 import { geoExtent } from '../geo';
 import { modeSelect } from '../modes/select';
 import { osmEntity } from '../osm/entity';
+import { isColourValid } from '../osm/tags';
 import { services } from '../services';
 import { svgIcon } from '../svg/icon';
 import { uiCmd } from './cmd';
@@ -33,8 +34,8 @@ export function uiFeatureList(context) {
             .attr('class', 'header fillL');
 
         header
-            .append('h3')
-            .html(t.html('inspector.feature_list'));
+            .append('h2')
+            .call(t.append('inspector.feature_list'));
 
         var searchWrap = selection
             .append('div')
@@ -123,10 +124,10 @@ export function uiFeatureList(context) {
 
             if (!q) return result;
 
-            var locationMatch = sexagesimal.pair(q.toUpperCase()) || q.match(/^(-?\d+\.?\d*)\s+(-?\d+\.?\d*)$/);
+            var locationMatch = sexagesimal.pair(q.toUpperCase()) || dmsMatcher(q);
 
             if (locationMatch) {
-                var loc = [parseFloat(locationMatch[0]), parseFloat(locationMatch[1])];
+                var loc = [Number(locationMatch[0]), Number(locationMatch[1])];
                 result.push({
                     id: -1,
                     geometry: 'point',
@@ -137,15 +138,15 @@ export function uiFeatureList(context) {
             }
 
             // A location search takes priority over an ID search
-            var idMatch = !locationMatch && q.match(/(?:^|\W)(node|way|relation|[nwr])\W?0*([1-9]\d*)(?:\W|$)/i);
+            var idMatch = !locationMatch && q.match(/(?:^|\W)(node|way|relation|note|[nwr])\W{0,2}0*([1-9]\d*)(?:\W|$)/i);
 
             if (idMatch) {
-                var elemType = idMatch[1].charAt(0);
+                var elemType = idMatch[1] === 'note' ? idMatch[1] : idMatch[1].charAt(0);
                 var elemId = idMatch[2];
                 result.push({
                     id: elemType + elemId,
-                    geometry: elemType === 'n' ? 'point' : elemType === 'w' ? 'line' : 'relation',
-                    type: elemType === 'n' ? t('inspector.node') : elemType === 'w' ? t('inspector.way') : t('inspector.relation'),
+                    geometry: elemType === 'n' ? 'point' : elemType === 'w' ? 'line' : elemType === 'note' ? 'note' : 'relation',
+                    type: elemType === 'n' ? t('inspector.node') : elemType === 'w' ? t('inspector.way') : elemType === 'note' ? t('note.note') : t('inspector.relation'),
                     name: elemId
                 });
             }
@@ -205,8 +206,8 @@ export function uiFeatureList(context) {
                         type: type,
                         name: d.display_name,
                         extent: new geoExtent(
-                            [parseFloat(d.boundingbox[3]), parseFloat(d.boundingbox[0])],
-                            [parseFloat(d.boundingbox[2]), parseFloat(d.boundingbox[1])])
+                            [Number(d.boundingbox[3]), Number(d.boundingbox[0])],
+                            [Number(d.boundingbox[2]), Number(d.boundingbox[1])])
                     });
                 }
             });
@@ -229,6 +230,12 @@ export function uiFeatureList(context) {
                     id: 'r' + q,
                     geometry: 'relation',
                     type: t('inspector.relation'),
+                    name: q
+                });
+                result.push({
+                    id: 'note' + q,
+                    geometry: 'note',
+                    type: t('note.note'),
                     name: q
                 });
             }
@@ -255,7 +262,8 @@ export function uiFeatureList(context) {
                 .attr('class', 'entity-name');
 
             list.selectAll('.no-results-item .entity-name')
-                .html(t.html('geocoder.no_results_worldwide'));
+                .html('')
+                .call(t.append('geocoder.no_results_worldwide'));
 
             if (services.geocoder) {
               list.selectAll('.geocode-item')
@@ -268,7 +276,7 @@ export function uiFeatureList(context) {
                   .attr('class', 'label')
                   .append('span')
                   .attr('class', 'entity-name')
-                  .html(t.html('geocoder.search'));
+                  .call(t.append('geocoder.search'));
             }
 
             list.selectAll('.no-results-item')
@@ -277,18 +285,16 @@ export function uiFeatureList(context) {
             list.selectAll('.geocode-item')
                 .style('display', (value && _geocodeResults === undefined) ? 'block' : 'none');
 
-            list.selectAll('.feature-list-item')
-                .data([-1])
-                .remove();
-
             var items = list.selectAll('.feature-list-item')
                 .data(results, function(d) { return d.id; });
 
             var enter = items.enter()
                 .insert('button', '.geocode-item')
                 .attr('class', 'feature-list-item')
-                .on('mouseover', mouseover)
-                .on('mouseout', mouseout)
+                .on('pointerenter', mouseover)
+                .on('pointerleave', mouseout)
+                .on('focus', mouseover)
+                .on('blur', mouseout)
                 .on('click', click);
 
             var label = enter
@@ -304,22 +310,26 @@ export function uiFeatureList(context) {
             label
                 .append('span')
                 .attr('class', 'entity-type')
-                .html(function(d) { return d.type; });
+                .text(function(d) { return d.type; });
 
             label
                 .append('span')
                 .attr('class', 'entity-name')
-                .html(function(d) { return d.name; });
+                .classed('has-colour', d => d.entity && d.entity.type === 'relation' && d.entity.tags.colour && isColourValid(d.entity.tags.colour))
+                .style('border-color', d => d.entity && d.entity.type === 'relation' && d.entity.tags.colour)
+                .text(function(d) { return d.name; });
 
             enter
                 .style('opacity', 0)
                 .transition()
                 .style('opacity', 1);
 
-            items.order();
-
             items.exit()
+                .each(d => mouseout(undefined, d))
                 .remove();
+
+            items.merge(enter)
+                .order();
         }
 
 
@@ -349,6 +359,13 @@ export function uiFeatureList(context) {
                 context.enter(modeSelect(context, [d.entity.id]));
                 context.map().zoomToEase(d.entity);
 
+            } else if (d.geometry  === 'note') {
+                // note
+                // get number part 'note12345'
+                const noteId = d.id.replace(/\D/g, '');
+
+                // load note
+                context.zoomToNote(noteId);
             } else {
                 // download, zoom to, and select the entity with the given ID
                 context.zoomToEntity(d.id);

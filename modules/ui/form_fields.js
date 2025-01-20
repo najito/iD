@@ -16,7 +16,8 @@ export function uiFormFields(context) {
     function formFields(selection) {
         var allowedFields = _fieldsArr.filter(function(field) { return field.isAllowed(); });
         var shown = allowedFields.filter(function(field) { return field.isShown(); });
-        var notShown = allowedFields.filter(function(field) { return !field.isShown(); });
+        var notShown = allowedFields.filter(function(field) { return !field.isShown(); })
+            .sort(function(a, b) { return (a.universal === b.universal ? 0 : a.universal ? 1 : -1); });
 
         var container = selection.selectAll('.form-fields-container')
             .data([0]);
@@ -84,7 +85,7 @@ export function uiFormFields(context) {
 
         moreEnter
             .append('span')
-            .html(t.html('inspector.add_fields'));
+            .call(t.append('inspector.add_fields'));
 
         more = moreEnter
             .merge(more);

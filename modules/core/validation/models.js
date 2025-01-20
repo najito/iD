@@ -14,6 +14,7 @@ export function validationIssue(attrs) {
     this.hash = attrs.hash;                // optional - string to further differentiate the issue
 
     this.id = generateID.apply(this);      // generated - see below
+    this.key = generateKey.apply(this);    // generated - see below (call after generating this.id)
     this.autoFix = null;                   // generated - if autofix exists, will be set below
 
     // A unique, deterministic string hash.
@@ -39,6 +40,13 @@ export function validationIssue(attrs) {
         return parts.join(':');
     }
 
+    // An identifier suitable for use as the second argument to d3.selection#data().
+    // (i.e. this should change whenever the data needs to be refreshed)
+    function generateKey() {
+        return this.id + ':' + Date.now().toString();  // include time of creation
+    }
+
+
     this.extent = function(resolver) {
         if (this.loc) {
             return geoExtent(this.loc);
@@ -58,7 +66,7 @@ export function validationIssue(attrs) {
         if (issue.severity === 'warning') {
             // allow ignoring any issue that's not an error
             fixes.push(new validationIssueFix({
-                title: t.html('issues.fix.ignore_issue.title'),
+                title: t.append('issues.fix.ignore_issue.title'),
                 icon: 'iD-icon-close',
                 onClick: function() {
                     context.validator().ignoreIssue(this.issue.id);
@@ -68,7 +76,7 @@ export function validationIssue(attrs) {
 
         fixes.forEach(function(fix) {
             // the id doesn't matter as long as it's unique to this issue/fix
-            fix.id = fix.title;
+            fix.id = fix.title.stringId;
             // add a reference to the issue for use in actions
             fix.issue = issue;
             if (fix.autoArgs) {

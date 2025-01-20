@@ -1,3 +1,5 @@
+import { select as d3_select } from 'd3-selection';
+
 import { t } from '../core/localizer';
 import { svgIcon } from '../svg/icon';
 import { uiTooltip } from './tooltip';
@@ -12,6 +14,11 @@ export function uiCommitWarnings(context) {
 
         for (var severity in issuesBySeverity) {
             var issues = issuesBySeverity[severity];
+
+            if (severity !== 'error') {      // exclude 'fixme' and similar - #8603
+                issues = issues.filter(function(issue) { return issue.type !== 'help_request'; });
+            }
+
             var section = severity + '-section';
             var issueItem = severity + '-item';
 
@@ -27,7 +34,7 @@ export function uiCommitWarnings(context) {
 
             containerEnter
                 .append('h3')
-                .html(severity === 'warning' ? t.html('commit.warnings') : t.html('commit.errors'));
+                .call(severity === 'warning' ? t.append('commit.warnings') : t.append('commit.errors'));
 
             containerEnter
                 .append('ul')
@@ -38,7 +45,7 @@ export function uiCommitWarnings(context) {
 
 
             var items = container.select('ul').selectAll('li')
-                .data(issues, function(d) { return d.id; });
+                .data(issues, function(d) { return d.key; });
 
             items.exit()
                 .remove();
@@ -84,8 +91,9 @@ export function uiCommitWarnings(context) {
                 .merge(items);
 
             items.selectAll('.issue-message')
-                .html(function(d) {
-                    return d.message(context);
+                .text('')
+                .each(function(d) {
+                    return d.message(context)(d3_select(this));
                 });
         }
     }

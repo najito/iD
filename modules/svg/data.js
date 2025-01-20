@@ -5,7 +5,7 @@ import { text as d3_text } from 'd3-fetch';
 import { select as d3_select } from 'd3-selection';
 
 import stringify from 'fast-json-stable-stringify';
-import toGeoJSON from '@mapbox/togeojson';
+import { gpx, kml } from '@tmcw/togeojson';
 
 import { geoExtent, geoPolygonIntersectsPolygon } from '../geo';
 import { services } from '../services';
@@ -29,6 +29,13 @@ export function svgData(projection, context, dispatch) {
     var _template;
     var _src;
 
+    const supportedFormats = [
+        '.gpx',
+        '.kml',
+        '.geojson',
+        '.json'
+    ];
+
 
     function init() {
         if (_initialized) return;  // run once
@@ -48,6 +55,9 @@ export function svgData(projection, context, dispatch) {
                 d3_event.stopPropagation();
                 d3_event.preventDefault();
                 if (!detected.filedrop) return;
+                var f = d3_event.dataTransfer.files[0];
+                var extension = getExtension(f.name);
+                if (!supportedFormats.includes(extension)) return;
                 drawData.fileList(d3_event.dataTransfer.files);
             })
             .on('dragenter.svgData', over)
@@ -304,7 +314,7 @@ export function svgData(projection, context, dispatch) {
     function getExtension(fileName) {
         if (!fileName) return;
 
-        var re = /\.(gpx|kml|(geo)?json)$/i;
+        var re = /\.(gpx|kml|(geo)?json|png)$/i;
         var match = fileName.toLowerCase().match(re);
         return match && match.length && match[0];
     }
@@ -312,6 +322,21 @@ export function svgData(projection, context, dispatch) {
 
     function xmlToDom(textdata) {
         return (new DOMParser()).parseFromString(textdata, 'text/xml');
+    }
+
+
+    function stringifyGeojsonProperties(feature) {
+        const properties = feature.properties;
+        for (const key in properties) {
+            const property = properties[key];
+            if (typeof property === 'number' || typeof property === 'boolean' || Array.isArray(property)) {
+                properties[key] = property.toString();
+            } else if (property === null) {
+                properties[key] = 'null';
+            } else if (typeof property === 'object') {
+                properties[key] = JSON.stringify(property);
+            }
+        }
     }
 
 
@@ -324,14 +349,19 @@ export function svgData(projection, context, dispatch) {
         var gj;
         switch (extension) {
             case '.gpx':
-                gj = toGeoJSON.gpx(xmlToDom(data));
+                gj = gpx(xmlToDom(data));
                 break;
             case '.kml':
-                gj = toGeoJSON.kml(xmlToDom(data));
+                gj = kml(xmlToDom(data));
                 break;
             case '.geojson':
             case '.json':
                 gj = JSON.parse(data);
+                if (gj.type === 'FeatureCollection') {
+                    gj.features.forEach(stringifyGeojsonProperties);
+                } else if (gj.type === 'Feature') {
+                    stringifyGeojsonProperties(gj);
+                }
                 break;
         }
 
@@ -437,9 +467,9 @@ export function svgData(projection, context, dispatch) {
         if (!arguments.length) return _fileList;
 
         _template = null;
-        _fileList = fileList;
         _geojson = null;
         _src = null;
+        _fileList = fileList;
 
         if (!fileList || !fileList.length) return this;
         var f = fileList[0];

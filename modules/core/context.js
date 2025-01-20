@@ -1,24 +1,26 @@
 import _debounce from 'lodash-es/debounce';
+import _throttle from 'lodash-es/throttle';
 
 import { dispatch as d3_dispatch } from 'd3-dispatch';
 import { json as d3_json } from 'd3-fetch';
 import { select as d3_select } from 'd3-selection';
 
+import packageJSON from '../../package.json';
+
 import { t } from '../core/localizer';
 
-import { fileFetcher as data } from './file_fetcher';
+import { fileFetcher } from './file_fetcher';
 import { localizer } from './localizer';
-import { prefs } from './preferences';
 import { coreHistory } from './history';
 import { coreValidator } from './validator';
 import { coreUploader } from './uploader';
 import { geoRawMercator } from '../geo/raw_mercator';
-import { modeSelect } from '../modes/select';
+import { modeSelect, modeSelectNote } from '../modes';
 import { presetManager } from '../presets';
 import { rendererBackground, rendererFeatures, rendererMap, rendererPhotos } from '../renderer';
 import { services } from '../services';
 import { uiInit } from '../ui/init';
-import { utilKeybinding, utilRebind, utilStringQs, utilUnicodeCharsTruncated } from '../util';
+import { utilKeybinding, utilRebind, utilStringQs, utilCleanOsmString } from '../util';
 
 
 export function coreContext() {
@@ -26,14 +28,11 @@ export function coreContext() {
   let context = utilRebind({}, dispatch, 'on');
   let _deferred = new Set();
 
-  context.version = '2.20.0-dev';
+  context.version = packageJSON.version;
   context.privacyVersion = '20201202';
 
   // iD will alter the hash so cache the parameters intended to setup the session
   context.initialHashParams = window.location.hash ? utilStringQs(window.location.hash) : {};
-
-  context.isFirstSession = !prefs('sawSplash') && !prefs('sawPrivacyVersion');
-
 
   /* Changeset */
   // An osmChangeset object. Not loaded until needed.
@@ -104,14 +103,6 @@ export function coreContext() {
     if (_connection) {
       _connection.switch(options);
     }
-    return context;
-  };
-
-  /* connection options for source switcher (optional) */
-  let _apiConnections;
-  context.apiConnections = function(val) {
-    if (!arguments.length) return _apiConnections;
-    _apiConnections = val;
     return context;
   };
 
@@ -187,30 +178,62 @@ export function coreContext() {
     }
   };
 
-  context.zoomToEntity = (entityID, zoomTo) => {
+  // Download single note
+  context.loadNote = (entityID, callback) => {
+    if (_connection) {
+      const cid = _connection.getConnectionId();
+      _connection.loadEntityNote(entityID, afterLoad(cid, callback));
+    }
+  };
 
+  context.zoomToEntity = (entityID, zoomTo) => {
+    context.zoomToEntities([entityID], zoomTo);
+  };
+
+  context.zoomToEntities = (entityIDs, zoomTo) => {
     // be sure to load the entity even if we're not going to zoom to it
-    context.loadEntity(entityID, (err, result) => {
+    let loadedEntities = [];
+    const throttledZoomTo = _throttle(() => _map.zoomTo(loadedEntities), 500);
+    entityIDs.forEach(entityID => context.loadEntity(entityID, (err, result) => {
       if (err) return;
+      const entity = result.data.find(e => e.id === entityID);
+      if (!entity) return;
+      loadedEntities.push(entity);
       if (zoomTo !== false) {
-          const entity = result.data.find(e => e.id === entityID);
-          if (entity) {
-            _map.zoomTo(entity);
-          }
+        throttledZoomTo();
       }
-    });
+    }));
 
     _map.on('drawn.zoomToEntity', () => {
-      if (!context.hasEntity(entityID)) return;
+      if (!entityIDs.every(entityID => context.hasEntity(entityID))) return;
       _map.on('drawn.zoomToEntity', null);
       context.on('enter.zoomToEntity', null);
-      context.enter(modeSelect(context, [entityID]));
+      context.enter(modeSelect(context, entityIDs));
     });
 
     context.on('enter.zoomToEntity', () => {
       if (_mode.id !== 'browse') {
         _map.on('drawn.zoomToEntity', null);
         context.on('enter.zoomToEntity', null);
+      }
+    });
+  };
+
+  context.zoomToNote = (noteId, zoomTo) => {
+    context.loadNote(noteId, (err, result) => {
+      if (err) return;
+      const entity = result.data.find(e => e.id === noteId);
+      if (entity) {
+        // zoom to, used note loc
+        const note = services.osm.getNote(noteId);
+        if (zoomTo !== false) {
+          context.map().centerZoom(note.loc,15);
+        }
+        // open note layer
+        const noteLayer = context.layers().layer('notes');
+        noteLayer.enabled(true);
+        // select the note
+        context.enter(modeSelectNote(context, noteId));
       }
     });
   };
@@ -230,26 +253,9 @@ export function coreContext() {
   context.maxCharsForTagValue = () => 255;
   context.maxCharsForRelationRole = () => 255;
 
-  function cleanOsmString(val, maxChars) {
-    // be lenient with input
-    if (val === undefined || val === null) {
-      val = '';
-    } else {
-      val = val.toString();
-    }
-
-    // remove whitespace
-    val = val.trim();
-
-    // use the canonical form of the string
-    if (val.normalize) val = val.normalize('NFC');
-
-    // trim to the number of allowed characters
-    return utilUnicodeCharsTruncated(val, maxChars);
-  }
-  context.cleanTagKey = (val) => cleanOsmString(val, context.maxCharsForTagKey());
-  context.cleanTagValue = (val) => cleanOsmString(val, context.maxCharsForTagValue());
-  context.cleanRelationRole = (val) => cleanOsmString(val, context.maxCharsForRelationRole());
+  context.cleanTagKey = (val) => utilCleanOsmString(val, context.maxCharsForTagKey());
+  context.cleanTagValue = (val) => utilCleanOsmString(val, context.maxCharsForTagValue());
+  context.cleanRelationRole = (val) => utilCleanOsmString(val, context.maxCharsForRelationRole());
 
 
   /* History */
@@ -447,7 +453,7 @@ export function coreContext() {
   context.assetPath = function(val) {
     if (!arguments.length) return _assetPath;
     _assetPath = val;
-    data.assetPath(val);
+    fileFetcher.assetPath(val);
     return context;
   };
 
@@ -455,7 +461,7 @@ export function coreContext() {
   context.assetMap = function(val) {
     if (!arguments.length) return _assetMap;
     _assetMap = val;
-    data.assetMap(val);
+    fileFetcher.assetMap(val);
     return context;
   };
 
@@ -552,8 +558,8 @@ export function coreContext() {
 
       // kick off some async work
       localizer.ensureLoaded();
-      _background.ensureLoaded();
       presetManager.ensureLoaded();
+      _background.ensureLoaded();
 
       Object.values(services).forEach(service => {
         if (service && typeof service.init === 'function') {
@@ -576,13 +582,14 @@ export function coreContext() {
 
       // if the container isn't available, e.g. when testing, don't load the UI
       if (!context.container().empty()) {
-        _ui.ensureLoaded().then(function() {
-          _photos.init();
-        });
+        _ui.ensureLoaded()
+          .then(() => {
+            _background.init();
+            _photos.init();
+          });
       }
     }
   };
-
 
   return context;
 }

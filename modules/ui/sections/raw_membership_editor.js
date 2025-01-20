@@ -12,6 +12,7 @@ import { actionDeleteMembers } from '../../actions/delete_members';
 
 import { modeSelect } from '../../modes/select';
 import { osmEntity, osmRelation } from '../../osm';
+import { isColourValid } from '../../osm/tags';
 import { services } from '../../services';
 import { svgIcon } from '../../svg/icon';
 import { uiCombobox } from '../combobox';
@@ -31,7 +32,7 @@ export function uiSectionRawMembershipEditor(context) {
             var parents = getSharedParentRelations();
             var gt = parents.length > _maxMemberships ? '>' : '';
             var count = gt + parents.slice(0, _maxMemberships).length;
-            return t('inspector.title_count', { title: t.html('inspector.relations'), count: count });
+            return t.append('inspector.title_count', { title: t('inspector.relations'), count: count });
         })
         .disclosureContent(renderDisclosureContent);
 
@@ -170,7 +171,6 @@ export function uiSectionRawMembershipEditor(context) {
 
 
     function addMembership(d, role) {
-        this.blur();           // avoid keeping focus on the button
         _showBlank = false;
 
         function actionAddMembers(relationId, ids, role) {
@@ -205,6 +205,18 @@ export function uiSectionRawMembershipEditor(context) {
     }
 
 
+    function downloadMembers(d3_event, d) {
+        d3_event.preventDefault();
+        const button = d3_select(this);
+
+        // display the loading indicator
+        button.classed('loading', true);
+        context.loadEntity(d.relation.id, function() {
+            section.reRender();
+        });
+    }
+
+
     function deleteMembership(d3_event, d) {
         this.blur();           // avoid keeping focus on the button
         if (d === 0) return;   // called on newrow (shouldn't happen)
@@ -230,7 +242,7 @@ export function uiSectionRawMembershipEditor(context) {
         var newRelation = {
             relation: null,
             value: t('inspector.new_relation'),
-            display: t.html('inspector.new_relation')
+            display: t.append('inspector.new_relation')
         };
 
         var entityID = _entityIDs[0];
@@ -239,12 +251,29 @@ export function uiSectionRawMembershipEditor(context) {
 
         var graph = context.graph();
 
-        function baseDisplayLabel(entity) {
+        function baseDisplayValue(entity) {
             var matched = presetManager.match(entity, graph);
             var presetName = (matched && matched.name()) || t('inspector.relation');
             var entityName = utilDisplayName(entity) || '';
 
             return presetName + ' ' + entityName;
+        }
+
+        function baseDisplayLabel(entity) {
+            var matched = presetManager.match(entity, graph);
+            var presetName = (matched && matched.name()) || t('inspector.relation');
+            var entityName = utilDisplayName(entity) || '';
+
+            return selection => {
+                selection
+                    .append('b')
+                    .text(presetName + ' ');
+                selection
+                    .append('span')
+                    .classed('has-colour', entity.tags.colour && isColourValid(entity.tags.colour))
+                    .style('border-color', entity.tags.colour)
+                    .text(entityName);
+            };
         }
 
         var explicitRelation = q && context.hasEntity(q.toLowerCase());
@@ -253,17 +282,22 @@ export function uiSectionRawMembershipEditor(context) {
 
             result.push({
                 relation: explicitRelation,
-                value: baseDisplayLabel(explicitRelation) + ' ' + explicitRelation.id
+                value: baseDisplayValue(explicitRelation) + ' ' + explicitRelation.id,
+                display: baseDisplayLabel(explicitRelation)
             });
         } else {
 
             context.history().intersects(context.map().extent()).forEach(function(entity) {
                 if (entity.type !== 'relation' || entity.id === entityID) return;
 
-                var value = baseDisplayLabel(entity);
+                var value = baseDisplayValue(entity);
                 if (q && (value + ' ' + entity.id).toLowerCase().indexOf(q.toLowerCase()) === -1) return;
 
-                result.push({ relation: entity, value: value });
+                result.push({
+                    relation: entity,
+                    value,
+                    display: baseDisplayLabel(entity)
+                });
             });
 
             result.sort(function(a, b) {
@@ -341,19 +375,33 @@ export function uiSectionRawMembershipEditor(context) {
         labelLink
             .append('span')
             .attr('class', 'member-entity-type')
-            .html(function(d) {
+            .text(function(d) {
                 var matched = presetManager.match(d.relation, context.graph());
-                return (matched && matched.name()) || t('inspector.relation');
+                return (matched && matched.name()) || t.html('inspector.relation');
             });
 
         labelLink
             .append('span')
             .attr('class', 'member-entity-name')
-            .html(function(d) { return utilDisplayName(d.relation); });
+            .classed('has-colour', d => d.relation.tags.colour && isColourValid(d.relation.tags.colour))
+            .style('border-color', d => d.relation.tags.colour)
+            .html(function(d) {
+                const matched = presetManager.match(d.relation, context.graph());
+                // hide the network from the name if there is NSI match
+                return utilDisplayName(d.relation, matched.suggestion);
+            });
+
+        labelEnter
+            .append('button')
+            .attr('class', 'members-download')
+            .attr('title', t('icons.download'))
+            .call(svgIcon('#iD-icon-load'))
+            .on('click', downloadMembers);
 
         labelEnter
             .append('button')
             .attr('class', 'remove member-delete')
+            .attr('title', t('icons.remove'))
             .call(svgIcon('#iD-operation-delete'))
             .on('click', deleteMembership);
 
@@ -363,6 +411,13 @@ export function uiSectionRawMembershipEditor(context) {
             .attr('title', t('icons.zoom_to'))
             .call(svgIcon('#iD-icon-framed-dot', 'monochrome'))
             .on('click', zoomToRelation);
+
+        items = items.merge(itemsEnter);
+        items.selectAll('button.members-download')
+            .classed('hide', d => {
+                const graph = context.graph();
+                return d.relation.members.every(m => graph.hasEntity(m.id));
+            });
 
         var wrapEnter = itemsEnter
             .append('div')
@@ -421,6 +476,7 @@ export function uiSectionRawMembershipEditor(context) {
         newLabelEnter
             .append('button')
             .attr('class', 'remove member-delete')
+            .attr('title', t('icons.remove'))
             .call(svgIcon('#iD-operation-delete'))
             .on('click', function() {
                 list.selectAll('.member-row-new')
@@ -445,7 +501,10 @@ export function uiSectionRawMembershipEditor(context) {
         newMembership.selectAll('.member-entity-input')
             .on('blur', cancelEntity)   // if it wasn't accepted normally, cancel it
             .call(nearbyCombo
-                .on('accept', acceptEntity)
+                .on('accept', function(d) {
+                    this.blur(); // always blurs the triggering element
+                    acceptEntity.call(this, d);
+                })
                 .on('cancel', cancelEntity)
             );
 
@@ -461,12 +520,15 @@ export function uiSectionRawMembershipEditor(context) {
 
         var addRelationButton = addRowEnter
             .append('button')
-            .attr('class', 'add-relation');
+            .attr('class', 'add-relation')
+            .attr('aria-label', t('inspector.add_to_relation'));
 
         addRelationButton
             .call(svgIcon('#iD-icon-plus', 'light'));
         addRelationButton
-            .call(uiTooltip().title(t.html('inspector.add_to_relation')).placement(localizer.textDirection() === 'ltr' ? 'right' : 'left'));
+            .call(uiTooltip()
+                .title(() => t.append('inspector.add_to_relation'))
+                .placement(localizer.textDirection() === 'ltr' ? 'right' : 'left'));
 
         addRowEnter
             .append('div')

@@ -1,8 +1,6 @@
 import _debounce from 'lodash-es/debounce';
 import { descending as d3_descending, ascending as d3_ascending } from 'd3-array';
-import {
-    select as d3_select
-} from 'd3-selection';
+import { select as d3_select } from 'd3-selection';
 
 import { prefs } from '../../core/preferences';
 import { t, localizer } from '../../core/localizer';
@@ -23,7 +21,7 @@ export function uiSectionBackgroundList(context) {
         .on('change', customChanged);
 
     var section = uiSection('background-list', context)
-        .label(t.html('background.backgrounds'))
+        .label(() => t.append('background.backgrounds'))
         .disclosureContent(renderDisclosureContent);
 
     function previousBackgroundID() {
@@ -55,7 +53,7 @@ export function uiSectionBackgroundList(context) {
             .attr('class', 'minimap-toggle-item')
             .append('label')
             .call(uiTooltip()
-                .title(t.html('background.minimap.tooltip'))
+                .title(() => t.append('background.minimap.tooltip'))
                 .keys([t('background.minimap.key')])
                 .placement('top')
             );
@@ -70,7 +68,7 @@ export function uiSectionBackgroundList(context) {
 
         minimapLabelEnter
             .append('span')
-            .html(t.html('background.minimap.description'));
+            .call(t.append('background.minimap.description'));
 
 
         var panelLabelEnter = bgExtrasListEnter
@@ -78,7 +76,7 @@ export function uiSectionBackgroundList(context) {
             .attr('class', 'background-panel-toggle-item')
             .append('label')
             .call(uiTooltip()
-                .title(t.html('background.panel.tooltip'))
+                .title(() => t.append('background.panel.tooltip'))
                 .keys([uiCmd('⌘⇧' + t('info_panels.background.key'))])
                 .placement('top')
             );
@@ -93,14 +91,14 @@ export function uiSectionBackgroundList(context) {
 
         panelLabelEnter
             .append('span')
-            .html(t.html('background.panel.description'));
+            .call(t.append('background.panel.description'));
 
         var locPanelLabelEnter = bgExtrasListEnter
             .append('li')
             .attr('class', 'location-panel-toggle-item')
             .append('label')
             .call(uiTooltip()
-                .title(t.html('background.location_panel.tooltip'))
+                .title(() => t.append('background.location_panel.tooltip'))
                 .keys([uiCmd('⌘⇧' + t('info_panels.location.key'))])
                 .placement('top')
             );
@@ -115,7 +113,7 @@ export function uiSectionBackgroundList(context) {
 
         locPanelLabelEnter
             .append('span')
-            .html(t.html('background.location_panel.description'));
+            .call(t.append('background.location_panel.description'));
 
 
         // "Info / Report a Problem" link
@@ -129,7 +127,7 @@ export function uiSectionBackgroundList(context) {
             .call(svgIcon('#iD-icon-out-link', 'inline'))
             .attr('href', 'https://github.com/openstreetmap/iD/blob/develop/FAQ.md#how-can-i-report-an-issue-with-background-imagery')
             .append('span')
-            .html(t.html('background.imagery_problem_faq'));
+            .call(t.append('background.imagery_problem_faq'));
 
         _backgroundList
             .call(drawListItems, 'radio', function(d3_event, d) {
@@ -144,7 +142,7 @@ export function uiSectionBackgroundList(context) {
             var item = d3_select(this).select('label');
             var span = item.select('span');
             var placement = (i < nodes.length / 2) ? 'bottom' : 'top';
-            var description = d.description();
+            var hasDescription = d.hasDescription();
             var isOverflowing = (span.property('clientWidth') !== span.property('scrollWidth'));
 
             item.call(uiTooltip().destroyAny);
@@ -152,13 +150,13 @@ export function uiSectionBackgroundList(context) {
             if (d.id === previousBackgroundID()) {
                 item.call(uiTooltip()
                     .placement(placement)
-                    .title('<div>' + t.html('background.switch') + '</div>')
+                    .title(() => t.append('background.switch'))
                     .keys([uiCmd('⌘' + t('background.key'))])
                 );
-            } else if (description || isOverflowing) {
+            } else if (hasDescription || isOverflowing) {
                 item.call(uiTooltip()
                     .placement(placement)
-                    .title(description || d.label())
+                    .title(() => hasDescription ? d.description() : d.label())
                 );
             }
         });
@@ -202,13 +200,13 @@ export function uiSectionBackgroundList(context) {
 
         label
             .append('span')
-            .html(function(d) { return d.label(); });
+            .each(function(d) { d.label()(d3_select(this)); });
 
         enter.filter(function(d) { return d.id === 'custom'; })
             .append('button')
             .attr('class', 'layer-browse')
             .call(uiTooltip()
-                .title(t.html('settings.custom_background.tooltip'))
+                .title(() => t.append('settings.custom_background.tooltip'))
                 .placement((localizer.textDirection() === 'rtl') ? 'right' : 'left')
             )
             .on('click', function(d3_event) {
@@ -221,11 +219,11 @@ export function uiSectionBackgroundList(context) {
             .append('div')
             .attr('class', 'best')
             .call(uiTooltip()
-                .title(t.html('background.best_imagery'))
+                .title(() => t.append('background.best_imagery'))
                 .placement((localizer.textDirection() === 'rtl') ? 'right' : 'left')
             )
             .append('span')
-            .html('&#9733;');
+            .text('★');
 
         layerList
             .call(updateLayerSelections);

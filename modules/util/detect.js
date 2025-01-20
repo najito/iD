@@ -47,20 +47,18 @@ export function utilDetect(refresh) {
 
   // detect other browser capabilities
   // Legacy Opera has incomplete svg style support. See #715
-  _detected.opera = (_detected.browser.toLowerCase() === 'opera' && parseFloat(_detected.version) < 15 );
+  _detected.opera = (_detected.browser.toLowerCase() === 'opera' && Number(_detected.version) < 15 );
 
   if (_detected.browser.toLowerCase() === 'msie') {
     _detected.ie = true;
     _detected.browser = 'Internet Explorer';
-    _detected.support = parseFloat(_detected.version) >= 11;
+    _detected.support = false;
   } else {
     _detected.ie = false;
     _detected.support = true;
   }
 
   _detected.filedrop = (window.FileReader && 'ondrop' in window);
-  _detected.download = !(_detected.ie || _detected.browser.toLowerCase() === 'edge');
-  _detected.cssfilters = !(_detected.ie || _detected.browser.toLowerCase() === 'edge');
 
 
   /* Platform */

@@ -3,9 +3,10 @@ export * from './combo';
 export * from './input';
 export * from './access';
 export * from './address';
-export * from './cycleway';
+export * from './directional_combo';
 export * from './lanes';
 export * from './localized';
+export * from './roadheight';
 export * from './roadspeed';
 export * from './radio';
 export * from './restrictions';
@@ -29,6 +30,7 @@ import {
 } from './combo';
 
 import {
+    uiFieldColour,
     uiFieldEmail,
     uiFieldIdentifier,
     uiFieldNumber,
@@ -44,9 +46,10 @@ import {
 
 import { uiFieldAccess } from './access';
 import { uiFieldAddress } from './address';
-import { uiFieldCycleway } from './cycleway';
+import { uiFieldDirectionalCombo } from './directional_combo';
 import { uiFieldLanes } from './lanes';
 import { uiFieldLocalized } from './localized';
+import { uiFieldRoadheight } from './roadheight';
 import { uiFieldRoadspeed } from './roadspeed';
 import { uiFieldRestrictions } from './restrictions';
 import { uiFieldTextarea } from './textarea';
@@ -57,15 +60,18 @@ export var uiFields = {
     access: uiFieldAccess,
     address: uiFieldAddress,
     check: uiFieldCheck,
+    colour: uiFieldColour,
     combo: uiFieldCombo,
-    cycleway: uiFieldCycleway,
+    cycleway: uiFieldDirectionalCombo,
+    date: uiFieldText,
     defaultCheck: uiFieldDefaultCheck,
+    directionalCombo: uiFieldDirectionalCombo,
     email: uiFieldEmail,
     identifier: uiFieldIdentifier,
     lanes: uiFieldLanes,
     localized: uiFieldLocalized,
+    roadheight: uiFieldRoadheight,
     roadspeed: uiFieldRoadspeed,
-    roadheight: uiFieldText,
     manyCombo: uiFieldManyCombo,
     multiCombo: uiFieldMultiCombo,
     networkCombo: uiFieldNetworkCombo,

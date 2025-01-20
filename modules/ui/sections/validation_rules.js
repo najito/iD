@@ -16,7 +16,7 @@ export function uiSectionValidationRules(context) {
 
     var section = uiSection('issues-rules', context)
         .disclosureContent(renderDisclosureContent)
-        .label(t.html('issues.rules.title'));
+        .label(() => t.append('issues.rules.title'));
 
     var _ruleKeys = context.validator().getRuleKeys()
         .filter(function(key) { return key !== 'maprules'; })
@@ -44,8 +44,9 @@ export function uiSectionValidationRules(context) {
         ruleLinks
             .append('a')
             .attr('class', 'issue-rules-link')
+            .attr('role', 'button')
             .attr('href', '#')
-            .html(t.html('issues.disable_all'))
+            .call(t.append('issues.disable_all'))
             .on('click', function(d3_event) {
                 d3_event.preventDefault();
                 context.validator().disableRules(_ruleKeys);
@@ -54,8 +55,9 @@ export function uiSectionValidationRules(context) {
         ruleLinks
             .append('a')
             .attr('class', 'issue-rules-link')
+            .attr('role', 'button')
             .attr('href', '#')
-            .html(t.html('issues.enable_all'))
+            .call(t.append('issues.enable_all'))
             .on('click', function(d3_event) {
                 d3_event.preventDefault();
                 context.validator().disableRules([]);
@@ -85,7 +87,7 @@ export function uiSectionValidationRules(context) {
         if (name === 'rule') {
             enter
                 .call(uiTooltip()
-                    .title(function(d) { return t.html('issues.' + d + '.tip'); })
+                    .title(function(d) { return t.append('issues.' + d + '.tip'); })
                     .placement('top')
                 );
         }
@@ -104,7 +106,7 @@ export function uiSectionValidationRules(context) {
             .html(function(d) {
                 var params = {};
                 if (d === 'unsquare_way') {
-                    params.val = '<span class="square-degrees"></span>';
+                    params.val = { html: '<span class="square-degrees"></span>' };
                 }
                 return t.html('issues.' + d + '.title', params);
             });
@@ -158,7 +160,7 @@ export function uiSectionValidationRules(context) {
     function changeSquare() {
         var input = d3_select(this);
         var degStr = utilGetSetValue(input).trim();
-        var degNum = parseFloat(degStr, 10);
+        var degNum = Number(degStr);
 
         if (!isFinite(degNum)) {
             degNum = DEFAULTSQUARE;
@@ -175,7 +177,7 @@ export function uiSectionValidationRules(context) {
             .property('value', degStr);
 
         prefs('validate-square-degrees', degStr);
-        context.validator().reloadUnsquareIssues();
+        context.validator().revalidateUnsquare();
     }
 
     function isRuleEnabled(d) {

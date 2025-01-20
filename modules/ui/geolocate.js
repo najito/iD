@@ -62,7 +62,7 @@ export function uiGeolocate(context) {
             zoomTo();
         } else {
             context.ui().flash
-                .label(t.html('geolocate.location_unavailable'))
+                .label(t.append('geolocate.location_unavailable'))
                 .iconName('#iD-icon-geolocate')();
         }
 
@@ -77,6 +77,7 @@ export function uiGeolocate(context) {
 
     function updateButtonState() {
         _button.classed('active', _layer.enabled());
+        _button.attr('aria-pressed', _layer.enabled());
     }
 
     return function(selection) {
@@ -85,10 +86,11 @@ export function uiGeolocate(context) {
         _button = selection
             .append('button')
             .on('click', click)
+            .attr('aria-pressed', false)
             .call(svgIcon('#iD-icon-geolocate', 'light'))
             .call(uiTooltip()
                 .placement((localizer.textDirection() === 'rtl') ? 'right' : 'left')
-                .title(t.html('geolocate.title'))
+                .title(() => t.append('geolocate.title'))
                 .keys([t('geolocate.key')])
             );
 

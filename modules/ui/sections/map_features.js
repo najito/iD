@@ -7,7 +7,7 @@ export function uiSectionMapFeatures(context) {
     var _features = context.features().keys();
 
     var section = uiSection('map-features', context)
-        .label(t.html('map_data.map_features'))
+        .label(() => t.append('map_data.map_features'))
         .disclosureContent(renderDisclosureContent)
         .expandedByDefault(false);
 
@@ -31,8 +31,9 @@ export function uiSectionMapFeatures(context) {
         footer
             .append('a')
             .attr('class', 'feature-list-link')
+            .attr('role', 'button')
             .attr('href', '#')
-            .html(t.html('issues.disable_all'))
+            .call(t.append('issues.disable_all'))
             .on('click', function(d3_event) {
                 d3_event.preventDefault();
                 context.features().disableAll();
@@ -41,8 +42,9 @@ export function uiSectionMapFeatures(context) {
         footer
             .append('a')
             .attr('class', 'feature-list-link')
+            .attr('role', 'button')
             .attr('href', '#')
-            .html(t.html('issues.enable_all'))
+            .call(t.append('issues.enable_all'))
             .on('click', function(d3_event) {
                 d3_event.preventDefault();
                 context.features().enableAll();
@@ -69,10 +71,13 @@ export function uiSectionMapFeatures(context) {
             .append('li')
             .call(uiTooltip()
                 .title(function(d) {
-                    var tip = t.html(name + '.' + d + '.tooltip');
+                    var tip = t.append(name + '.' + d + '.tooltip');
                     if (autoHiddenFeature(d)) {
-                        var msg = showsLayer('osm') ? t.html('map_data.autohidden') : t.html('map_data.osmhidden');
-                        tip += '<div>' + msg + '</div>';
+                        var msg = showsLayer('osm') ? t.append('map_data.autohidden') : t.append('map_data.osmhidden');
+                        return selection => {
+                            selection.call(tip);
+                            selection.append('div').call(msg);
+                        };
                     }
                     return tip;
                 })

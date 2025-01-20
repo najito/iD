@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-const colors = require('colors/safe');
+const chalk = require('chalk');
 const concat = require('concat-files');
 const glob = require('glob');
 const fs = require('fs');
@@ -20,8 +20,8 @@ if (process.argv[1].indexOf('build_css.js') > -1) {
 function buildCSS() {
   if (_currBuild) return _currBuild;
 
-  const START = '🏗   ' + colors.yellow('Building css...');
-  const END = '👍  ' + colors.green('css built');
+  const START = '🏗   ' + chalk.yellow('Building css...');
+  const END = '👍  ' + chalk.green('css built');
 
   console.log('');
   console.log(START);
@@ -29,8 +29,8 @@ function buildCSS() {
 
   return _currBuild =
     Promise.resolve()
-      .then(() => doGlob('css/**/*.css'))
-      .then(files => doConcat(files, 'dist/iD.css'))
+      .then(() => glob.globSync('css/**/*.css'))
+      .then(files => doConcat(files.sort(), 'dist/iD.css'))
       .then(() => {
         const css = fs.readFileSync('dist/iD.css', 'utf8');
         return postcss([
@@ -53,15 +53,6 @@ function buildCSS() {
       });
 }
 
-
-function doGlob(pattern) {
-  return new Promise((resolve, reject) => {
-    glob(pattern, (err, files) => {
-      if (err) return reject(err);
-      resolve(files);
-    });
-  });
-}
 
 function doConcat(files, output) {
   return new Promise((resolve, reject) => {

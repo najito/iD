@@ -1,4 +1,4 @@
-import marked from 'marked';
+import { marked } from 'marked';
 import { svgIcon } from '../../svg/icon';
 import { uiIntro } from '../intro/intro';
 import { uiPane } from '../pane';
@@ -18,6 +18,7 @@ export function uiPaneHelp(context) {
             'before_start',
             'open_source_h',
             'open_source',
+            'open_source_attribution',
             'open_source_help'
         ]],
         ['overview', [
@@ -273,8 +274,8 @@ export function uiPaneHelp(context) {
 
     var helpPane = uiPane('help', context)
         .key(t('help.key'))
-        .label(t.html('help.title'))
-        .description(t.html('help.title'))
+        .label(t.append('help.title'))
+        .description(t.append('help.title'))
         .iconName('iD-icon-help');
 
     helpPane.renderContent = function(content) {
@@ -361,6 +362,7 @@ export function uiPaneHelp(context) {
             .enter()
             .append('li')
             .append('a')
+            .attr('role', 'button')
             .attr('href', '#')
             .html(function(d) { return d.title; })
             .on('click', function(d3_event, d) {
@@ -372,7 +374,7 @@ export function uiPaneHelp(context) {
             .append('li')
             .attr('class', 'shortcuts')
             .call(uiTooltip()
-                .title(t.html('shortcuts.tooltip'))
+                .title(() => t.append('shortcuts.tooltip'))
                 .keys(['?'])
                 .placement('top')
             )
@@ -382,7 +384,7 @@ export function uiPaneHelp(context) {
 
         shortcuts
             .append('div')
-            .html(t.html('shortcuts.title'));
+            .call(t.append('shortcuts.title'));
 
         var walkthrough = toc
             .append('li')
@@ -399,7 +401,7 @@ export function uiPaneHelp(context) {
 
         walkthrough
             .append('div')
-            .html(t.html('splash.walkthrough'));
+            .call(t.append('splash.walkthrough'));
 
 
         var helpContent = content

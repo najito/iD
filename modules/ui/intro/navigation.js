@@ -59,9 +59,9 @@ export function uiIntroNavigation(context, reveal) {
 
             var textId = context.lastPointerType() === 'mouse' ? 'drag' : 'drag_touch';
             var dragString = helpHtml('intro.navigation.map_info') + '{br}' + helpHtml('intro.navigation.' + textId);
-            reveal('.surface', dragString);
+            reveal('.main-map .surface', dragString);
             context.map().on('drawn.intro', function() {
-                reveal('.surface', dragString, { duration: 0 });
+                reveal('.main-map .surface', dragString, { duration: 0 });
             });
 
             context.map().on('move.intro', function() {
@@ -87,10 +87,10 @@ export function uiIntroNavigation(context, reveal) {
         var textId = context.lastPointerType() === 'mouse' ? 'zoom' : 'zoom_touch';
         var zoomString = helpHtml('intro.navigation.' + textId);
 
-        reveal('.surface', zoomString);
+        reveal('.main-map .surface', zoomString);
 
         context.map().on('drawn.intro', function() {
-            reveal('.surface', zoomString, { duration: 0 });
+            reveal('.main-map .surface', zoomString, { duration: 0 });
         });
 
         context.map().on('move.intro', function() {
@@ -110,12 +110,12 @@ export function uiIntroNavigation(context, reveal) {
     function features() {
         var onClick = function() { continueTo(pointsLinesAreas); };
 
-        reveal('.surface', helpHtml('intro.navigation.features'),
+        reveal('.main-map .surface', helpHtml('intro.navigation.features'),
             { buttonText: t.html('intro.ok'), buttonCallback: onClick }
         );
 
         context.map().on('drawn.intro', function() {
-            reveal('.surface', helpHtml('intro.navigation.features'),
+            reveal('.main-map .surface', helpHtml('intro.navigation.features'),
                 { duration: 0, buttonText: t.html('intro.ok'), buttonCallback: onClick }
             );
         });
@@ -129,12 +129,12 @@ export function uiIntroNavigation(context, reveal) {
     function pointsLinesAreas() {
         var onClick = function() { continueTo(nodesWays); };
 
-        reveal('.surface', helpHtml('intro.navigation.points_lines_areas'),
+        reveal('.main-map .surface', helpHtml('intro.navigation.points_lines_areas'),
             { buttonText: t.html('intro.ok'), buttonCallback: onClick }
         );
 
         context.map().on('drawn.intro', function() {
-            reveal('.surface', helpHtml('intro.navigation.points_lines_areas'),
+            reveal('.main-map .surface', helpHtml('intro.navigation.points_lines_areas'),
                 { duration: 0, buttonText: t.html('intro.ok'), buttonCallback: onClick }
             );
         });
@@ -148,12 +148,12 @@ export function uiIntroNavigation(context, reveal) {
     function nodesWays() {
         var onClick = function() { continueTo(clickTownHall); };
 
-        reveal('.surface', helpHtml('intro.navigation.nodes_ways'),
+        reveal('.main-map .surface', helpHtml('intro.navigation.nodes_ways'),
             { buttonText: t.html('intro.ok'), buttonCallback: onClick }
         );
 
         context.map().on('drawn.intro', function() {
-            reveal('.surface', helpHtml('intro.navigation.nodes_ways'),
+            reveal('.main-map .surface', helpHtml('intro.navigation.nodes_ways'),
                 { duration: 0, buttonText: t.html('intro.ok'), buttonCallback: onClick }
             );
         });
@@ -355,7 +355,7 @@ export function uiIntroNavigation(context, reveal) {
         var href = d3_select(selector).attr('href') || '#iD-icon-close';
 
         reveal('.entity-editor-pane',
-            helpHtml('intro.navigation.close_townhall', { button: icon(href, 'inline') })
+            helpHtml('intro.navigation.close_townhall', { button: { html: icon(href, 'inline') } })
         );
 
         context.on('exit.intro', function() {
@@ -368,7 +368,7 @@ export function uiIntroNavigation(context, reveal) {
             var href = d3_select(selector).attr('href') || '#iD-icon-close';
 
             reveal('.entity-editor-pane',
-                helpHtml('intro.navigation.close_townhall', { button: icon(href, 'inline') }),
+                helpHtml('intro.navigation.close_townhall', { button: { html: icon(href, 'inline') } }),
                 { duration: 0 }
             );
         });
@@ -492,9 +492,9 @@ export function uiIntroNavigation(context, reveal) {
 
         reveal('.entity-editor-pane', helpHtml('intro.navigation.street_different_fields') + '{br}' +
             helpHtml('intro.navigation.editor_street', {
-                button: icon(href, 'inline'),
-                field1: onewayField.label(),
-                field2: maxspeedField.label()
+                button: { html: icon(href, 'inline') },
+                field1: onewayField.title(),
+                field2: maxspeedField.title()
             }));
 
         context.on('exit.intro', function() {
@@ -508,9 +508,9 @@ export function uiIntroNavigation(context, reveal) {
 
             reveal('.entity-editor-pane', helpHtml('intro.navigation.street_different_fields') + '{br}' +
                 helpHtml('intro.navigation.editor_street', {
-                    button: icon(href, 'inline'),
-                    field1: onewayField.label(),
-                    field2: maxspeedField.label()
+                    button: { html: icon(href, 'inline') },
+                    field1: onewayField.title(),
+                    field2: maxspeedField.title()
                 }), { duration: 0 }
             );
         });

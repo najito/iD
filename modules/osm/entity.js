@@ -36,7 +36,11 @@ osmEntity.id.fromOSM = function(type, id) {
 
 
 osmEntity.id.toOSM = function(id) {
-    return id.slice(1);
+    var match = id.match(/^[cnwr](-?\d+)$/);
+    if (match) {
+        return match[1];
+    }
+    return '';
 };
 
 
@@ -129,7 +133,8 @@ osmEntity.prototype = {
 
 
     isNew: function() {
-        return this.osmId() < 0;
+        var osmId = osmEntity.id.toOSM(this.id);
+        return osmId.length === 0 || osmId[0] === '-';
     },
 
 
@@ -151,7 +156,7 @@ osmEntity.prototype = {
                 changed = true;
                 merged[k] = utilUnicodeCharsTruncated(
                     utilArrayUnion(t1.split(/;\s*/), t2.split(/;\s*/)).join(';'),
-                    255 // avoid exceeding character limit; see also services/osm.js -> maxCharsForTagValue()
+                    255 // avoid exceeding character limit; see also context.maxCharsForTagValue()
                 );
             }
         }
@@ -174,10 +179,6 @@ osmEntity.prototype = {
 
     hasInterestingTags: function() {
         return Object.keys(this.tags).some(osmIsInterestingTag);
-    },
-
-    hasWikidata: function() {
-        return !!this.tags.wikidata || !!this.tags['brand:wikidata'];
     },
 
     isHighwayIntersection: function() {
